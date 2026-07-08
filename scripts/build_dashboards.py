@@ -39,11 +39,15 @@ def api(method, path, body=None):
 
 
 def vis(vid, title, vis_state, dv):
+    # NOTE: legacy visualizations link their data view via `indexRefName` inside searchSourceJSON,
+    # which maps to the references[] entry of the same name. Without it Kibana can't load the index
+    # pattern ("[esaggs] > [indexPatternLoad] requires the 'id' argument") and the panel is empty.
+    search_source = {"query": {"query": "", "language": "kuery"}, "filter": [],
+                     "indexRefName": "kibanaSavedObjectMeta.searchSourceJSON.index"}
     return {"id": vid, "type": "visualization",
             "attributes": {"title": title, "visState": json.dumps(vis_state),
                            "uiStateJSON": "{}", "description": "",
-                           "kibanaSavedObjectMeta": {"searchSourceJSON": json.dumps(
-                               {"query": {"query": "", "language": "kuery"}, "filter": []})}},
+                           "kibanaSavedObjectMeta": {"searchSourceJSON": json.dumps(search_source)}},
             "references": [{"name": "kibanaSavedObjectMeta.searchSourceJSON.index",
                            "type": "index-pattern", "id": dv}]}
 
@@ -54,19 +58,15 @@ def terms_agg(field, size=10, schema="segment"):
 
 
 def bar(vid, title, dv, field, size=10, horizontal=False, metric=None):
-    aggs = [metric or count_metric, terms_agg(field, size)]
-    return vis(vid, title, {"title": title, "type": "horizontal_bar" if horizontal else "histogram",
-               "aggs": aggs,
-               "params": {"addLegend": False, "addTooltip": True,
-                          "categoryAxes": [{"id": "CategoryAxis-1", "type": "category",
-                                            "position": "left" if horizontal else "bottom",
-                                            "show": True, "scale": {"type": "linear"}}],
-                          "valueAxes": [{"id": "ValueAxis-1",
-                                         "position": "bottom" if horizontal else "left",
-                                         "show": True, "scale": {"type": "linear"}, "type": "value"}],
-                          "seriesParams": [{"data": {"id": "1", "label": "value"},
-                                            "type": "histogram", "mode": "normal",
-                                            "valueAxis": "ValueAxis-1", "show": True}]}}, dv)
+    # Rendered as a data table (DOM) rather than an elastic-charts bar (canvas) so it displays
+    # reliably in every browser and in headless exports, and shows exact counts for the viva.
+    m = metric or count_metric
+    return vis(vid, title, {"title": title, "type": "table",
+               "aggs": [m, {"id": "2", "enabled": True, "type": "terms", "schema": "bucket",
+                            "params": {"field": field, "size": size,
+                                       "order": "desc", "orderBy": m["id"]}}],
+               "params": {"perPage": min(size, 12), "showTotal": True,
+                          "showToolbar": True, "totalFunc": "sum"}}, dv)
 
 
 def pie(vid, title, dv, field, size=6):
@@ -76,8 +76,9 @@ def pie(vid, title, dv, field, size=6):
 
 
 def metric_vis(vid, title, dv):
-    return vis(vid, title, {"title": title, "type": "metric", "aggs": [count_metric],
-               "params": {"metric": {"labels": {"show": True}}}}, dv)
+    # Total count as a 1-row data table (DOM) — renders reliably everywhere.
+    return vis(vid, title, {"title": title, "type": "table", "aggs": [count_metric],
+               "params": {"perPage": 5, "showTotal": False, "showToolbar": False}}, dv)
 
 
 def table(vid, title, dv, aggs, per_page=10):
@@ -141,7 +142,8 @@ def dashboard(did, title, desc, layout):
             "attributes": {"title": title, "hits": 0, "description": desc,
                            "panelsJSON": json.dumps(panels),
                            "optionsJSON": json.dumps({"useMargins": True, "hidePanelTitles": False}),
-                           "version": 1, "timeRestore": True, "timeFrom": "now-7d", "timeTo": "now",
+                           "version": 1, "timeRestore": True,
+                           "timeFrom": "now-1y", "timeTo": "now+1y",
                            "kibanaSavedObjectMeta": {"searchSourceJSON": json.dumps(
                                {"query": {"query": "", "language": "kuery"}, "filter": []})}},
             "references": refs}
