@@ -2,7 +2,7 @@
 # show behavioral+UEBA beats these. Expand as needed; keep SIDs in the local range.
 
 # Long DNS query name (possible tunneling)
-alert dns any any -> any any (msg:"C2LAB Long DNS query name (possible tunnel)"; dns.query; content:!"."; pcre:"/^[^.]{50,}/"; sid:9000001; rev:1;)
+alert dns any any -> any any (msg:"C2LAB Long DNS query name (possible tunnel)"; dns.query; pcre:"/^[^.]{28,}\./"; sid:9000001; rev:1;)
 
 # High rate of NXDOMAIN could indicate DGA (tune threshold to your lab)
 # (Suricata rate handling is limited; NXDOMAIN bursts are better caught behaviorally — that's the point.)

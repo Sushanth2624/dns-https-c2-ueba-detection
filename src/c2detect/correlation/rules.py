@@ -14,6 +14,7 @@ BOOST_RULES = [
     ({"dga", "nxdomain_rate"}, 0.10),                    # DGA structure + failed lookups
     ({"query_len", "dns_entropy"}, 0.10),               # long high-entropy names -> tunneling
     ({"beacon_cv", "session_shape"}, 0.10),              # automated encrypted beacon
+    ({"beacon_cv", "ja3_rarity"}, 0.12),                 # regular call-home + anomalous TLS fingerprint
     ({"dns_entropy", "beacon_cv", "ja3_rarity"}, 0.15),  # tunneling + regular + odd TLS
     ({"doh_endpoint", "beacon_cv"}, 0.10),               # DoH-based beacon
 ]

@@ -21,3 +21,9 @@ eve.json
 *.pkl
 # OS
 .DS_Store
+
+# capture artifacts
+data/captures/
+data/tmp/
+data/eval/corpus/
+models/

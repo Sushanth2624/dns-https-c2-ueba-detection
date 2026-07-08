@@ -5,6 +5,7 @@ Deterministic and template-driven — no LLM, fully auditable (that is the point
 """
 from __future__ import annotations
 import uuid
+from datetime import datetime, timezone
 from typing import Mapping
 
 # Human-readable reason templates per indicator.
@@ -53,6 +54,7 @@ def build_alert(corr, ueba, mitre_map: Mapping[str, list], min_conf: float, hot:
 
     return {
         "alert_id": str(uuid.uuid4()),
+        "@timestamp": datetime.now(timezone.utc).isoformat(),
         "entity": corr.entity,
         "verdict": verdict_for(corr.confidence, min_conf),
         "confidence": round(corr.confidence, 3),

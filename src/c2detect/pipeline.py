@@ -46,6 +46,30 @@ def _load_ja3_baseline(path: str | None) -> set[str]:
     return seen
 
 
+def entity_subscores(dns, ssl, http, conns, conn_ts_map, ja3_list,
+                     baseline_for_rarity, entropy_high, nx_high, cv_low, sni_ts_map=None) -> dict:
+    """Reduce one entity's records to the normalized 0..1 indicator sub-score vector.
+
+    Shared by full-capture feature building and the incremental detection-latency scorer.
+    Beacon timing is grouped both by destination IP (conn.log) and by destination domain
+    (ssl.log SNI) so periodic call-home survives CDN/anycast IP rotation.
+    """
+    queries = [str(r.get("query", "")) for r in dns if r.get("query")]
+    beacon_groups = list(conn_ts_map.values()) + list((sni_ts_map or {}).values())
+    return {
+        "dns_entropy": max((entropy.subscore(q, entropy_high) for q in queries), default=0.0),
+        "dga": max((dga.subscore(q) for q in queries), default=0.0),
+        "query_len": max((length.subscore(q) for q in queries), default=0.0),
+        "nxdomain_rate": nxdomain.subscore(dns, nx_high),
+        "beacon_cv": max((beaconing.subscore(ts, cv_low) for ts in beacon_groups), default=0.0),
+        "ja3_rarity": max((ja3ja4.rarity_subscore(j, baseline_for_rarity) for j in ja3_list),
+                          default=0.0),
+        "doh_endpoint": max([doh.subscore(r) for r in ssl] + [doh.subscore(r) for r in http],
+                            default=0.0),
+        "session_shape": max((session.subscore(r) for r in conns), default=0.0),
+    }
+
+
 def build_feature_vectors(cfg: Config) -> dict[str, dict]:
     """Aggregate Zeek/Suricata logs into {entity: {indicator: subscore, ...}}.
 
@@ -66,6 +90,7 @@ def build_feature_vectors(cfg: Config) -> dict[str, dict]:
     http_events: dict[str, list[dict]] = defaultdict(list)
     conn_recs: dict[str, list[dict]] = defaultdict(list)
     conn_ts: dict[str, dict[str, list[float]]] = defaultdict(lambda: defaultdict(list))
+    sni_ts: dict[str, dict[str, list[float]]] = defaultdict(lambda: defaultdict(list))
     entity_ja3: dict[str, list[str]] = defaultdict(list)
     ja3_counts: Counter = Counter()
 
@@ -83,6 +108,12 @@ def build_feature_vectors(cfg: Config) -> dict[str, dict]:
         if j and j != "-":
             entity_ja3[ent].append(j)
             ja3_counts[j] += 1
+        sni = rec.get("server_name")
+        if sni:
+            try:
+                sni_ts[ent][sni].append(float(rec.get("ts")))
+            except (TypeError, ValueError):
+                pass
     for rec in _load_zeek(log_dir, "http"):
         ent = _orig_h(rec)
         if ent:
@@ -128,26 +159,11 @@ def build_feature_vectors(cfg: Config) -> dict[str, dict]:
     entities = set(dns_events) | set(ssl_events) | set(http_events) | set(conn_recs)
     features: dict[str, dict] = {}
     for ent in entities:
-        dns = dns_events.get(ent, [])
-        queries = [str(r.get("query", "")) for r in dns if r.get("query")]
-        ssl = ssl_events.get(ent, [])
-        http = http_events.get(ent, [])
-        conns = conn_recs.get(ent, [])
-
-        subs = {
-            "dns_entropy": max((entropy.subscore(q, entropy_high) for q in queries), default=0.0),
-            "dga": max((dga.subscore(q) for q in queries), default=0.0),
-            "query_len": max((length.subscore(q) for q in queries), default=0.0),
-            "nxdomain_rate": nxdomain.subscore(dns, nx_high),
-            "beacon_cv": max((beaconing.subscore(ts, cv_low)
-                              for ts in conn_ts.get(ent, {}).values()), default=0.0),
-            "ja3_rarity": max((ja3ja4.rarity_subscore(j, baseline_for_rarity)
-                               for j in entity_ja3.get(ent, [])), default=0.0),
-            "doh_endpoint": max([doh.subscore(r) for r in ssl] + [doh.subscore(r) for r in http],
-                                default=0.0),
-            "session_shape": max((session.subscore(r) for r in conns), default=0.0),
-        }
-        features[ent] = subs
+        features[ent] = entity_subscores(
+            dns_events.get(ent, []), ssl_events.get(ent, []), http_events.get(ent, []),
+            conn_recs.get(ent, []), conn_ts.get(ent, {}), entity_ja3.get(ent, []),
+            baseline_for_rarity, entropy_high, nx_high, cv_low, sni_ts.get(ent, {}),
+        )
     return features
 
 
