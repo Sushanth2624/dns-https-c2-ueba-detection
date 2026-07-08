@@ -17,9 +17,20 @@ echo "############ DNS TUNNEL ############"
 $CAP dns_tunnel "udp port 53" -- \
   python3 traffic/malicious/dns_tunnel_sim.py tunnel.lab "" 30 60
 
-echo "############ BEACON (regular TLS call-home) ############"
-$CAP beacon "port 443 or port 53" -- \
-  python3 traffic/malicious/beacon_sim.py example.com 3 0.03 14 c2.internal.lab
+echo "############ BEACON (regular TLS call-home to local LAN C2) ############"
+# Stand up a local TLS 'C2' listener so beacon timing reflects a LAN implant (sub-ms latency),
+# not internet handshake jitter. Captured on loopback.
+C2DIR="data/tmp/c2srv"; mkdir -p "$C2DIR"
+[ -f "$C2DIR/cert.pem" ] || openssl req -x509 -newkey rsa:2048 -keyout "$C2DIR/key.pem" \
+  -out "$C2DIR/cert.pem" -days 2 -nodes -subj "/CN=c2.internal.lab" >/dev/null 2>&1
+if ! ss -ltn 2>/dev/null | grep -q ':8443'; then
+  ( cd "$C2DIR" && setsid openssl s_server -quiet -accept 8443 -cert cert.pem -key key.pem \
+      -naccept 999 </dev/null >/dev/null 2>&1 ) &
+  disown 2>/dev/null || true
+  sleep 1
+fi
+CAP_IFACE=lo $CAP beacon "tcp port 8443" -- \
+  python3 traffic/malicious/beacon_sim.py 127.0.0.1 2 0.03 15 c2.internal.lab 8443
 
 echo "############ DOH (DNS over HTTPS beacon) ############"
 $CAP doh "port 443 or port 53" -- \
