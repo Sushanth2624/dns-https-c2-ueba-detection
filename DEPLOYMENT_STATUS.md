@@ -10,7 +10,7 @@ self-contained single host (see [`docs/deployment.md`](docs/deployment.md)).
 | 1 — Telemetry & features | per-entity feature vector; pytest green | ✅ all 9 indicators implemented; `build_feature_vectors`; **12/12 tests pass** |
 | 2 — UEBA baselining | benign low, planted anomaly high, contract shape | ✅ IsolationForest **+ z-score**, frozen on benign; attacks score 1.0, benign ≤0.51 |
 | 3 — Correlation & explainability | injected scenario → one explainable ES alert | ✅ glass-box fusion + boosts + reasoner → 4 explainable alerts in `c2-alerts` |
-| 4 — Attack sim & labeled data | benign + 4 attacks captured through pipeline | ✅ real captures: benign, beacon, DGA, DNS-tunnel, DoH + ground-truth manifests |
+| 4 — Attack sim & labeled data | benign + 4 attacks captured through pipeline | ✅ **real container-lab: 7 endpoint hosts, inline capture, distinct source IPs** (+ single-host captures) |
 | 5 — Evaluation A/B/C | results showing C vs B vs A | ✅ **F1 C=1.00 > B=0.80 > A=0.67**, FPR C=0.00 < B=0.33 |
 | 6 — Dashboards & docs | one-path reproducible demo + report | ✅ `make demo`; Kibana dashboard exported; deployment/results/viva docs |
 
@@ -28,10 +28,13 @@ self-contained single host (see [`docs/deployment.md`](docs/deployment.md)).
 ## Reproduce
 
 ```bash
-make test      # 12/12
-make demo      # capture -> A/B/C evaluation -> alerts to ES -> Kibana dashboard
+make test       # 12/12
+make lab-demo   # real multi-host: 7 container endpoints -> inline capture -> A/B/C -> ES -> Kibana
+make demo       # single-host variant (no Docker): capture on host NIC -> ... -> Kibana
 make health
 ```
+
+**Real container-lab result** (7 hosts, distinct source IPs, inline capture): F1 C=1.00, A=0.67, B=0.67; FPR C=0.00.
 
 Results: `data/eval/report.md`, `data/eval/results.json`, `data/eval/charts/*.png`.
 Kibana: http://localhost:5601/app/dashboards → "DNS/HTTPS C2 — Behavioral Detection".

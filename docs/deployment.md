@@ -73,10 +73,37 @@ sudo apt-get update && sudo apt-get install -y elasticsearch kibana
   blends benign background into each attack entity so detection is non-trivial. Features are still
   computed from **real** Zeek output — only the entity label is synthetic.
 
-## One-path demo
+## Real multi-host lab (container endpoints, inline capture)
+
+This VM has no nested virtualization (`vmx`/`svm` not exposed, no `/dev/kvm`), so hardware VMs can't
+run here. Instead the endpoints are **Docker containers** on a lab bridge, which realizes the plan's
+inline-gateway architecture faithfully — each endpoint is a distinct host with its own IP and TLS
+fingerprint, and this VM is their gateway + DNS resolver, so Zeek/Suricata capture **100% inline**
+with **real per-host source IPs (no relabeling)**.
+
+```
+ ┌──────────── Analysis VM (gateway 10.50.0.1, dnsmasq resolver, local C2 :8443) ───────────┐
+ │  labbr0 bridge ── tcpdump (inline) ── Zeek + Suricata ── indicators ── UEBA ── correlate  │
+ └───────┬───────┬───────┬───────┬───────┬───────┬───────┬──────────────────────────────────┘
+   ep-benign1  benign2  benign3  ep-dga  ep-tunnel ep-beacon ep-doh     (7 container endpoints)
+   10.50.0.11   .12      .13     .21      .22       .23       .24
+```
 
 ```bash
-make demo          # build dataset -> A/B/C evaluation -> alerts to ES -> Kibana dashboard
+make lab-up        # create bridge + dnsmasq + local C2 + 7 endpoint containers
+make lab-capture   # run all endpoints' traffic, capture inline, build Zeek+Suricata logs
+make evaluate-lab  # A/B/C on the real capture (distinct source IPs)
+make lab-demo      # all of the above -> alerts + telemetry to ES -> Kibana dashboards
+make lab-down      # tear down containers + helpers
+```
+
+Result on real inline data (7 hosts: 3 benign, 4 attack): **F1 C=1.00 > A/B=0.67, FPR C=0.00**.
+`docker ps` shows the live endpoint hosts; `data/captures/lab/` holds their real Zeek/Suricata logs.
+
+## Single-host demo (no Docker)
+
+```bash
+make demo          # capture on the host NIC -> A/B/C evaluation -> alerts to ES -> Kibana dashboard
 make health        # stack health check
 ```
 Then open Kibana → Dashboards → **"DNS/HTTPS C2 — Behavioral Detection"**.
