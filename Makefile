@@ -10,6 +10,8 @@ dataset:
 	bash scripts/build_dataset.sh
 evaluate:
 	PYTHONPATH=src $(PY) -m c2detect.cli evaluate --config config/config.yaml --out data/eval
+ingest:
+	PYTHONPATH=src $(PY) scripts/ingest_es.py
 dashboards:
 	$(PY) scripts/build_dashboards.py
 # One-path reproducible demo: capture -> evaluate (A/B/C) -> alerts to ES -> dashboards

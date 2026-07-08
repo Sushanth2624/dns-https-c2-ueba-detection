@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
-"""Create the Kibana data view + C2 detection dashboard via the saved-objects API, then export
-the canonical NDJSON to dashboards/kibana/c2-dashboards.ndjson (the committed deliverable).
+"""Create Kibana data views + two dashboards via the saved-objects API, then export the canonical
+NDJSON to dashboards/kibana/c2-dashboards.ndjson (the committed deliverable).
+
+Dashboards:
+  "DNS/HTTPS C2 — Behavioral Detection"  alerts: severity, verdict, MITRE, top entities
+  "C2 — Telemetry & Scores"              entity scores (benign vs attack), Suricata, raw Zeek
 
 Usage: build_dashboards.py [kibana_url]
 """
@@ -10,153 +14,152 @@ import urllib.request
 from pathlib import Path
 
 KBN = sys.argv[1] if len(sys.argv) > 1 else "http://localhost:5601"
-DV_ID = "c2-alerts-view"
 ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / "dashboards" / "kibana" / "c2-dashboards.ndjson"
 
+# data views: id -> (index title, time field)
+DATA_VIEWS = {
+    "c2-alerts-view": ("c2-alerts", "@timestamp"),
+    "c2-scores-view": ("c2-entity-scores", "@timestamp"),
+    "zeek-dns-view": ("zeek-dns", "@timestamp"),
+    "zeek-ssl-view": ("zeek-ssl", "@timestamp"),
+    "zeek-conn-view": ("zeek-conn", "@timestamp"),
+    "suricata-view": ("suricata-alerts", "@timestamp"),
+}
 
-def api(method, path, body=None, ndjson=False):
-    url = f"{KBN}{path}"
-    headers = {"kbn-xsrf": "true"}
-    data = None
-    if ndjson:
-        headers["Content-Type"] = "application/x-ndjson"
-        data = body.encode()
-    elif body is not None:
-        headers["Content-Type"] = "application/json"
-        data = json.dumps(body).encode()
-    req = urllib.request.Request(url, data=data, headers=headers, method=method)
+count_metric = {"id": "1", "enabled": True, "type": "count", "schema": "metric", "params": {}}
+
+
+def api(method, path, body=None):
+    req = urllib.request.Request(
+        f"{KBN}{path}", data=(json.dumps(body).encode() if body is not None else None),
+        headers={"kbn-xsrf": "true", "Content-Type": "application/json"}, method=method)
     with urllib.request.urlopen(req, timeout=60) as r:
         return r.status, r.read().decode()
 
 
-def vis(vid, title, vis_state):
-    return {
-        "id": vid, "type": "visualization",
-        "attributes": {
-            "title": title,
-            "visState": json.dumps(vis_state),
-            "uiStateJSON": "{}",
-            "description": "",
-            "kibanaSavedObjectMeta": {
-                "searchSourceJSON": json.dumps({"query": {"query": "", "language": "kuery"},
-                                                "filter": []})},
-        },
-        "references": [{"name": "kibanaSavedObjectMeta.searchSourceJSON.index",
-                        "type": "index-pattern", "id": DV_ID}],
-    }
+def vis(vid, title, vis_state, dv):
+    return {"id": vid, "type": "visualization",
+            "attributes": {"title": title, "visState": json.dumps(vis_state),
+                           "uiStateJSON": "{}", "description": "",
+                           "kibanaSavedObjectMeta": {"searchSourceJSON": json.dumps(
+                               {"query": {"query": "", "language": "kuery"}, "filter": []})}},
+            "references": [{"name": "kibanaSavedObjectMeta.searchSourceJSON.index",
+                           "type": "index-pattern", "id": dv}]}
 
 
-def terms(field, size=10):
-    return {"id": "2", "enabled": True, "type": "terms", "schema": "segment" if True else "bucket",
-            "params": {"field": field, "size": size, "order": "desc", "orderBy": "1",
-                       "otherBucket": False, "missingBucket": False}}
+def terms_agg(field, size=10, schema="segment"):
+    return {"id": "2", "enabled": True, "type": "terms", "schema": schema,
+            "params": {"field": field, "size": size, "order": "desc", "orderBy": "1"}}
 
 
-count_metric = {"id": "1", "enabled": True, "type": "count", "schema": "metric", "params": {}}
+def bar(vid, title, dv, field, size=10, horizontal=False, metric=None):
+    aggs = [metric or count_metric, terms_agg(field, size)]
+    return vis(vid, title, {"title": title, "type": "horizontal_bar" if horizontal else "histogram",
+               "aggs": aggs,
+               "params": {"addLegend": False, "addTooltip": True,
+                          "categoryAxes": [{"id": "CategoryAxis-1", "type": "category",
+                                            "position": "left" if horizontal else "bottom",
+                                            "show": True, "scale": {"type": "linear"}}],
+                          "valueAxes": [{"id": "ValueAxis-1",
+                                         "position": "bottom" if horizontal else "left",
+                                         "show": True, "scale": {"type": "linear"}, "type": "value"}],
+                          "seriesParams": [{"data": {"id": "1", "label": "value"},
+                                            "type": "histogram", "mode": "normal",
+                                            "valueAxis": "ValueAxis-1", "show": True}]}}, dv)
+
+
+def pie(vid, title, dv, field, size=6):
+    return vis(vid, title, {"title": title, "type": "pie",
+               "aggs": [count_metric, terms_agg(field, size)],
+               "params": {"isDonut": True, "legendPosition": "right"}}, dv)
+
+
+def metric_vis(vid, title, dv):
+    return vis(vid, title, {"title": title, "type": "metric", "aggs": [count_metric],
+               "params": {"metric": {"labels": {"show": True}}}}, dv)
+
+
+def table(vid, title, dv, aggs, per_page=10):
+    return vis(vid, title, {"title": title, "type": "table", "aggs": aggs,
+               "params": {"perPage": per_page, "showTotal": False}}, dv)
+
 
 objects = []
+for dv_id, (title, tf) in DATA_VIEWS.items():
+    objects.append({"id": dv_id, "type": "index-pattern",
+                    "attributes": {"title": title, "timeFieldName": tf}, "references": []})
 
-# 1. data view
-objects.append({
-    "id": DV_ID, "type": "index-pattern",
-    "attributes": {"title": "c2-alerts", "timeFieldName": "@timestamp"},
-    "references": [],
-})
-
-# 2. metric — total alerts
-objects.append(vis("c2-metric-total", "C2 — total alerts",
-                   {"title": "C2 — total alerts", "type": "metric",
-                    "aggs": [count_metric],
-                    "params": {"metric": {"colorSchema": "Green to Red",
-                                          "labels": {"show": True}}}}))
-
-# 3. pie — by severity
-objects.append(vis("c2-pie-severity", "C2 — alerts by severity",
-                   {"title": "C2 — alerts by severity", "type": "pie",
-                    "aggs": [count_metric,
-                             {"id": "2", "enabled": True, "type": "terms", "schema": "segment",
-                              "params": {"field": "severity", "size": 5, "order": "desc",
-                                         "orderBy": "1"}}],
-                    "params": {"isDonut": True, "legendPosition": "right"}}))
-
-# 4. vertical bar — by verdict
-objects.append(vis("c2-bar-verdict", "C2 — alerts by verdict",
-                   {"title": "C2 — alerts by verdict", "type": "histogram",
-                    "aggs": [count_metric,
-                             {"id": "2", "enabled": True, "type": "terms", "schema": "segment",
-                              "params": {"field": "verdict", "size": 5, "order": "desc",
-                                         "orderBy": "1"}}],
-                    "params": {"addLegend": True, "addTooltip": True,
-                               "categoryAxes": [{"id": "CategoryAxis-1", "type": "category",
-                                                 "position": "bottom", "show": True,
-                                                 "scale": {"type": "linear"}}],
-                               "valueAxes": [{"id": "ValueAxis-1", "position": "left",
-                                              "show": True, "scale": {"type": "linear"},
-                                              "type": "value"}],
-                               "seriesParams": [{"data": {"id": "1", "label": "Count"},
-                                                 "type": "histogram", "mode": "normal",
-                                                 "valueAxis": "ValueAxis-1", "show": True}]}}))
-
-# 5. horizontal bar — MITRE technique frequency
-objects.append(vis("c2-bar-mitre", "C2 — MITRE ATT&CK techniques",
-                   {"title": "C2 — MITRE ATT&CK techniques", "type": "horizontal_bar",
-                    "aggs": [count_metric,
-                             {"id": "2", "enabled": True, "type": "terms", "schema": "segment",
-                              "params": {"field": "mitre", "size": 15, "order": "desc",
-                                         "orderBy": "1"}}],
-                    "params": {"addLegend": False, "addTooltip": True,
-                               "categoryAxes": [{"id": "CategoryAxis-1", "type": "category",
-                                                 "position": "left", "show": True,
-                                                 "scale": {"type": "linear"}}],
-                               "valueAxes": [{"id": "ValueAxis-1", "position": "bottom",
-                                              "show": True, "scale": {"type": "linear"},
-                                              "type": "value"}],
-                               "seriesParams": [{"data": {"id": "1", "label": "Count"},
-                                                 "type": "histogram", "mode": "normal",
-                                                 "valueAxis": "ValueAxis-1", "show": True}]}}))
-
-# 6. data table — entities by max confidence
-objects.append(vis("c2-table-entities", "C2 — top entities by confidence",
-                   {"title": "C2 — top entities by confidence", "type": "table",
-                    "aggs": [{"id": "1", "enabled": True, "type": "max", "schema": "metric",
-                              "params": {"field": "confidence"}},
-                             {"id": "2", "enabled": True, "type": "terms", "schema": "bucket",
-                              "params": {"field": "entity", "size": 20, "order": "desc",
-                                         "orderBy": "1"}}],
-                    "params": {"perPage": 10, "showTotal": False}}))
-
-# 7. dashboard
-panels = []
-refs = []
-layout = [
-    ("c2-metric-total", 0, 0, 12, 8),
-    ("c2-pie-severity", 12, 0, 12, 8),
-    ("c2-bar-verdict", 24, 0, 24, 8),
-    ("c2-bar-mitre", 0, 8, 24, 15),
-    ("c2-table-entities", 24, 8, 24, 15),
+# ---- Dashboard 1: alerts ----
+objects += [
+    metric_vis("c2-metric-total", "C2 — total alerts", "c2-alerts-view"),
+    pie("c2-pie-severity", "C2 — alerts by severity", "c2-alerts-view", "severity", 5),
+    bar("c2-bar-verdict", "C2 — alerts by verdict", "c2-alerts-view", "verdict", 5),
+    bar("c2-bar-mitre", "C2 — MITRE ATT&CK techniques", "c2-alerts-view", "mitre", 15, horizontal=True),
+    table("c2-table-entities", "C2 — top entities by confidence", "c2-alerts-view",
+          [{"id": "1", "enabled": True, "type": "max", "schema": "metric",
+            "params": {"field": "confidence"}},
+           {"id": "2", "enabled": True, "type": "terms", "schema": "bucket",
+            "params": {"field": "entity", "size": 20, "order": "desc", "orderBy": "1"}}]),
 ]
-for i, (vid, x, y, w, h) in enumerate(layout, start=1):
-    pref = f"panel_{i}"
-    panels.append({"version": "8.19.0", "type": "visualization",
-                   "gridData": {"x": x, "y": y, "w": w, "h": h, "i": str(i)},
-                   "panelIndex": str(i), "embeddableConfig": {}, "panelRefName": pref})
-    refs.append({"name": pref, "type": "visualization", "id": vid})
 
-objects.append({
-    "id": "c2-dashboard", "type": "dashboard",
-    "attributes": {
-        "title": "DNS/HTTPS C2 — Behavioral Detection",
-        "hits": 0, "description": "Explainable C2 alerts: severity, verdict, MITRE, top entities.",
-        "panelsJSON": json.dumps(panels),
-        "optionsJSON": json.dumps({"useMargins": True, "hidePanelTitles": False}),
-        "version": 1,
-        "timeRestore": True, "timeFrom": "now-7d", "timeTo": "now",
-        "kibanaSavedObjectMeta": {"searchSourceJSON": json.dumps({"query": {"query": "",
-                                  "language": "kuery"}, "filter": []})},
-    },
-    "references": refs,
-})
+# ---- Dashboard 2: telemetry & scores ----
+max_conf = {"id": "1", "enabled": True, "type": "max", "schema": "metric",
+            "params": {"field": "confidence"}}
+avg_ueba = {"id": "3", "enabled": True, "type": "avg", "schema": "metric",
+            "params": {"field": "ueba_anomaly"}}
+objects += [
+    bar("sc-bar-conf", "Confidence by entity (benign vs attack)", "c2-scores-view",
+        "entity", 20, metric=max_conf),
+    pie("sc-pie-label", "Entities: benign vs attack", "c2-scores-view", "label", 3),
+    table("sc-table", "Entity scores (verdict / confidence / UEBA)", "c2-scores-view",
+          [max_conf, avg_ueba,
+           {"id": "2", "enabled": True, "type": "terms", "schema": "bucket",
+            "params": {"field": "entity", "size": 20, "order": "desc", "orderBy": "1"}},
+           {"id": "4", "enabled": True, "type": "terms", "schema": "bucket",
+            "params": {"field": "label", "size": 3, "order": "desc", "orderBy": "1"}},
+           {"id": "5", "enabled": True, "type": "terms", "schema": "bucket",
+            "params": {"field": "verdict", "size": 3, "order": "desc", "orderBy": "1"}}]),
+    bar("suri-bar-sig", "Suricata alerts by signature (Config A)", "suricata-view",
+        "signature", 10, horizontal=True),
+    bar("suri-bar-scn", "Suricata alerts by scenario", "suricata-view", "scenario", 6),
+    bar("zeek-dns-rcode", "Zeek DNS by response code", "zeek-dns-view", "rcode_name", 8),
+    bar("zeek-ssl-sni", "Zeek TLS top SNI", "zeek-ssl-view", "server_name", 12, horizontal=True),
+    bar("zeek-ssl-ja3", "Zeek TLS top JA3 fingerprints", "zeek-ssl-view", "ja3", 10, horizontal=True),
+]
+
+
+def dashboard(did, title, desc, layout):
+    panels, refs = [], []
+    for i, (vid, x, y, w, h) in enumerate(layout, start=1):
+        pref = f"panel_{i}"
+        panels.append({"version": "8.19.0", "type": "visualization",
+                       "gridData": {"x": x, "y": y, "w": w, "h": h, "i": str(i)},
+                       "panelIndex": str(i), "embeddableConfig": {}, "panelRefName": pref})
+        refs.append({"name": pref, "type": "visualization", "id": vid})
+    return {"id": did, "type": "dashboard",
+            "attributes": {"title": title, "hits": 0, "description": desc,
+                           "panelsJSON": json.dumps(panels),
+                           "optionsJSON": json.dumps({"useMargins": True, "hidePanelTitles": False}),
+                           "version": 1, "timeRestore": True, "timeFrom": "now-7d", "timeTo": "now",
+                           "kibanaSavedObjectMeta": {"searchSourceJSON": json.dumps(
+                               {"query": {"query": "", "language": "kuery"}, "filter": []})}},
+            "references": refs}
+
+
+objects.append(dashboard("c2-dashboard", "DNS/HTTPS C2 — Behavioral Detection",
+    "Explainable C2 alerts: severity, verdict, MITRE, top entities.", [
+        ("c2-metric-total", 0, 0, 12, 8), ("c2-pie-severity", 12, 0, 12, 8),
+        ("c2-bar-verdict", 24, 0, 24, 8), ("c2-bar-mitre", 0, 8, 24, 15),
+        ("c2-table-entities", 24, 8, 24, 15)]))
+
+objects.append(dashboard("c2-telemetry-dashboard", "C2 — Telemetry & Scores",
+    "Per-entity scores (benign vs attack), Suricata signature hits, raw Zeek telemetry.", [
+        ("sc-bar-conf", 0, 0, 32, 12), ("sc-pie-label", 32, 0, 16, 12),
+        ("sc-table", 0, 12, 48, 12),
+        ("suri-bar-sig", 0, 24, 24, 12), ("suri-bar-scn", 24, 24, 24, 12),
+        ("zeek-dns-rcode", 0, 36, 16, 12), ("zeek-ssl-sni", 16, 36, 16, 12),
+        ("zeek-ssl-ja3", 32, 36, 16, 12)]))
 
 ndjson = "\n".join(json.dumps(o) for o in objects) + "\n"
 
@@ -165,23 +168,20 @@ def import_ndjson(text):
     boundary = "----c2labBOUNDARY7e3f"
     body = (f"--{boundary}\r\n"
             f'Content-Disposition: form-data; name="file"; filename="c2.ndjson"\r\n'
-            f"Content-Type: application/x-ndjson\r\n\r\n"
-            f"{text}\r\n--{boundary}--\r\n").encode()
-    req = urllib.request.Request(
-        f"{KBN}/api/saved_objects/_import?overwrite=true", data=body,
+            f"Content-Type: application/x-ndjson\r\n\r\n{text}\r\n--{boundary}--\r\n").encode()
+    req = urllib.request.Request(f"{KBN}/api/saved_objects/_import?overwrite=true", data=body,
         headers={"kbn-xsrf": "true",
-                 "Content-Type": f"multipart/form-data; boundary={boundary}"},
-        method="POST")
-    with urllib.request.urlopen(req, timeout=60) as r:
+                 "Content-Type": f"multipart/form-data; boundary={boundary}"}, method="POST")
+    with urllib.request.urlopen(req, timeout=90) as r:
         return r.status, r.read().decode()
 
 
-def export_dashboard():
+def export_dashboards():
     status, resp = api("POST", "/api/saved_objects/_export",
-                       body={"objects": [{"type": "dashboard", "id": "c2-dashboard"}],
+                       body={"objects": [{"type": "dashboard", "id": "c2-dashboard"},
+                                         {"type": "dashboard", "id": "c2-telemetry-dashboard"}],
                              "includeReferencesDeep": True})
     OUT.parent.mkdir(parents=True, exist_ok=True)
-    # export returns NDJSON (last line is an export summary); keep object lines only
     lines = [l for l in resp.splitlines() if l.strip() and '"exportedCount"' not in l]
     OUT.write_text("\n".join(lines) + "\n")
     return status, len(lines)
@@ -189,14 +189,8 @@ def export_dashboard():
 
 status, resp = import_ndjson(ndjson)
 summary = json.loads(resp)
-print("import status", status, "success", summary.get("success"),
-      "count", summary.get("successCount"))
+print("import status", status, "success", summary.get("success"), "count", summary.get("successCount"))
 if summary.get("errors"):
-    print("errors:", json.dumps(summary["errors"], indent=2)[:1500])
-
-est, n = export_dashboard()
+    print("errors:", json.dumps(summary["errors"], indent=2)[:2000])
+est, n = export_dashboards()
 print(f"export status {est}: wrote {n} objects to {OUT}")
-
-
-if __name__ == "__main__":
-    pass
