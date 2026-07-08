@@ -94,9 +94,9 @@ def write_markdown(results: dict, out_path: str | Path) -> str:
               "| Attack entity | Attack type | Latency to first alert (s) |",
               "|---|---|---|"]
     gt = results["ground_truth"]
+    atypes = results.get("attack_type", {})
     for e, lat in results["detection_latency_sec"].items():
-        atype = next((v for k, v in [(e, e)] if k), e)
-        lines.append(f"| {e} | {atype} | {lat if lat is not None else 'n/a'} |")
+        lines.append(f"| {e} | {atypes.get(e, '')} | {lat if lat is not None else 'n/a'} |")
 
     lines += ["", "## Per-entity confidence (Config C)", "",
               "| Entity | Truth | UEBA anomaly | Confidence | Predicted |",

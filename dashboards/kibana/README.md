@@ -1,10 +1,20 @@
 # Kibana saved objects
 
-Export dashboards/visualizations here as NDJSON in Phase 6:
-Kibana > Stack Management > Saved Objects > Export -> commit `c2-dashboards.ndjson`.
+`c2-dashboards.ndjson` is the exported, importable dashboard (built by
+`scripts/build_dashboards.py`). Rebuild + re-export any time with `make dashboards`.
 
-Planned views:
-- Alerts over time by severity/verdict
-- Top entities by confidence
-- Indicator contribution breakdown per alert
-- Config A vs B vs C comparison (from evaluation results)
+Import into a fresh Kibana:
+```bash
+python3 scripts/build_dashboards.py            # builds + imports + re-exports
+# or manually: Stack Management > Saved Objects > Import > c2-dashboards.ndjson
+```
+
+Dashboard **"DNS/HTTPS C2 — Behavioral Detection"** (data view `c2-alerts`, time field `@timestamp`):
+- Total alerts (metric)
+- Alerts by severity (donut)
+- Alerts by verdict (bar)
+- MITRE ATT&CK techniques (horizontal bar)
+- Top entities by confidence (data table)
+
+Populate the `c2-alerts` index first: `make demo`, or
+`python -m c2detect.cli run --config config/config.demo.yaml`.

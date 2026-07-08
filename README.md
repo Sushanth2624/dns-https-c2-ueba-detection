@@ -40,10 +40,29 @@ Set `PYTHONPATH=src` or `pip install -e .` so `c2detect` is importable.
 ## Layout
 See RESEARCH_AND_PLAN.md §10 for the annotated tree.
 
-## Status
-Scaffold. Implemented as reference: entropy, beaconing, nxdomain indicators; IsolationForest
-baseline; correlation engine; explainable reasoner; ES writer. Remaining modules are stubs with
-defined interfaces — filled in per the sprint plan.
+## Status — implemented & deployed end-to-end (single-host)
+
+All phases built and running on one Ubuntu 24.04 Analysis VM. See
+[`docs/deployment.md`](docs/deployment.md) for the single-host adaptation and
+[`data/eval/report.md`](data/eval/report.md) for full results.
+
+- **Indicators (all implemented):** entropy, DGA, query-length, NXDOMAIN, beaconing (grouped by
+  dest IP *and* SNI), JA3/JA4 rarity, DoH, session-shape — each a normalized 0–1 sub-score.
+- **UEBA:** IsolationForest **+ one-sided z-score** fallback (contract-compatible OpenUBA adapter
+  also implemented).
+- **Correlation + explainability:** glass-box weighted fusion + boost rules → explainable alerts
+  (verdict, confidence, contributing indicators with reasons, MITRE, actions) → Elasticsearch.
+- **Sensors deployed:** Zeek 8.2.1 (+JA3/JA4), Suricata 8.0.5, Elasticsearch + Kibana 8.19.
+- **Evaluation (A/B/C), real captured traffic, 10 entities:**
+
+  | Config | F1 | FPR |
+  |---|---|---|
+  | A — signature-only (Suricata) | 0.67 | 0.00 |
+  | B — best single indicator | 0.80 | 0.33 |
+  | **C — multi-indicator + UEBA (this project)** | **1.00** | **0.00** |
+
+  Hypothesis supported: **C > B > A** on F1, with C the only config at zero false positives.
+- **Reproduce:** `make demo` (capture → evaluate → alerts to ES → Kibana dashboard).
 
 ## Ethics
 All attack simulation runs inside an isolated lab against the author's own hosts. No live C2, no

@@ -156,6 +156,7 @@ def evaluate(captures_dir: str | Path, corpus_dir: str | Path, base_cfg: Config,
         "C_confidence": c_conf,
         "C_predictions": c_pred,
         "detection_latency_sec": latency,
+        "attack_type": {e: g["attack_type"] for e, g in truth.items()},
         "ueba_anomaly": {e: round(s, 3) for e, s in ueba_scores.items()},
         "ground_truth": {e: g["label"] for e, g in truth.items()},
     }

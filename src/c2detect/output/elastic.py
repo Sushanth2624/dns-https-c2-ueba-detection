@@ -14,9 +14,31 @@ class AlertWriter:
         self.es = Elasticsearch(hosts, **kwargs)
         self.index = index
 
+    #: Explicit mapping so Kibana can aggregate on keyword fields without .keyword suffixes.
+    MAPPING = {
+        "properties": {
+            "@timestamp": {"type": "date"},
+            "alert_id": {"type": "keyword"},
+            "entity": {"type": "keyword"},
+            "verdict": {"type": "keyword"},
+            "confidence": {"type": "float"},
+            "severity": {"type": "keyword"},
+            "mitre": {"type": "keyword"},
+            "recommended_actions": {"type": "text"},
+            "ueba": {"properties": {"anomaly_score": {"type": "float"},
+                                    "risk_score": {"type": "integer"}}},
+            "score_breakdown": {"properties": {"ueba_component": {"type": "float"},
+                                               "indicator_component": {"type": "float"},
+                                               "boost": {"type": "float"}}},
+            "contributing_indicators": {"type": "nested", "properties": {
+                "name": {"type": "keyword"}, "value": {"type": "float"},
+                "why": {"type": "text"}}},
+        }
+    }
+
     def ensure_index(self) -> None:
         if not self.es.indices.exists(index=self.index):
-            self.es.indices.create(index=self.index)
+            self.es.indices.create(index=self.index, mappings=self.MAPPING)
 
     def write(self, alert: Mapping) -> None:
         self.es.index(index=self.index, id=alert.get("alert_id"), document=alert)
