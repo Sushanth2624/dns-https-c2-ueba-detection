@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+# Secrets / local config
+config/config.yaml
+*.env
+.env
+# Data / logs (do not commit captures)
+data/
+*.pcap
+*.log
+zeek-logs/
+suricata-logs/
+eve.json
+# Models
+*.joblib
+*.pkl
+# OS
+.DS_Store

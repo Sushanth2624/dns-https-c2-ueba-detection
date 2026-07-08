@@ -1,0 +1,15 @@
+# Signature baseline (Config A in the evaluation). Deliberately simple — the whole point is to
+# show behavioral+UEBA beats these. Expand as needed; keep SIDs in the local range.
+
+# Long DNS query name (possible tunneling)
+alert dns any any -> any any (msg:"C2LAB Long DNS query name (possible tunnel)"; dns.query; content:!"."; pcre:"/^[^.]{50,}/"; sid:9000001; rev:1;)
+
+# High rate of NXDOMAIN could indicate DGA (tune threshold to your lab)
+# (Suricata rate handling is limited; NXDOMAIN bursts are better caught behaviorally — that's the point.)
+
+# TLS to a known DoH provider (extend list)
+alert tls any any -> any any (msg:"C2LAB TLS to known DoH resolver"; tls.sni; content:"cloudflare-dns.com"; nocase; sid:9000002; rev:1;)
+alert tls any any -> any any (msg:"C2LAB TLS to known DoH resolver"; tls.sni; content:"dns.google"; nocase; sid:9000003; rev:1;)
+
+# Placeholder for a known-bad JA3 (fill from your lab implant fingerprint)
+# alert tls any any -> any any (msg:"C2LAB Known-bad JA3"; ja3.hash; content:"<JA3HASH>"; sid:9000004; rev:1;)

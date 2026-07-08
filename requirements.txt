@@ -1,0 +1,14 @@
+# Core
+pandas>=2.2
+numpy>=1.26
+scipy>=1.13
+pyyaml>=6.0
+# UEBA fallback
+scikit-learn>=1.4
+# Output
+elasticsearch>=8.15,<9   # match your ES major; use 9.x if you pin ES 9
+# CLI / utils
+click>=8.1
+python-dateutil>=2.9
+# Dev/test
+pytest>=8.0
