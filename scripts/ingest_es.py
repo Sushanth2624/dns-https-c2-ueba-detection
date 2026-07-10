@@ -13,7 +13,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
 from elasticsearch import Elasticsearch, helpers
@@ -52,6 +52,37 @@ def recreate(es, index, mapping):
     es.indices.create(index=index, mappings=mapping)
 
 
+# ---- time spreading: map the compressed capture window onto the last SPREAD_HOURS so Kibana
+# time-series have realistic shape while preserving each host's relative timing (e.g. beacons). ----
+SPREAD_HOURS = 24.0
+
+
+class TimeSpread:
+    def __init__(self, lab_dir):
+        ts = []
+        for kind in ("dns", "ssl", "conn"):
+            p = lab_dir / f"{kind}.log"
+            if p.exists():
+                for r in zeek_parser.read_log(p):
+                    try:
+                        ts.append(float(r.get("ts")))
+                    except (TypeError, ValueError):
+                        pass
+        self.lo = min(ts) if ts else 0.0
+        self.hi = max(ts) if ts else 1.0
+        self.span = max(self.hi - self.lo, 1e-6)
+        self.now = datetime.now(timezone.utc)
+
+    def iso(self, ts):
+        try:
+            frac = (float(ts) - self.lo) / self.span
+        except (TypeError, ValueError):
+            frac = 1.0
+        frac = min(1.0, max(0.0, frac))
+        dt = self.now - timedelta(hours=SPREAD_HOURS * (1.0 - frac))
+        return dt.isoformat()
+
+
 def _iso(ts):
     try:
         return datetime.fromtimestamp(float(ts), tz=timezone.utc).isoformat()
@@ -59,30 +90,48 @@ def _iso(ts):
         return datetime.now(timezone.utc).isoformat()
 
 
-def ingest_entity_scores(es, lab_dir, cfg):
+def _host_last_ts(lab_dir):
+    """Latest event ts per host (used to time-place its detection on the axis)."""
+    last = {}
+    for kind in ("dns", "ssl", "conn"):
+        p = lab_dir / f"{kind}.log"
+        if p.exists():
+            for r in zeek_parser.read_log(p):
+                e = r.get("id.orig_h")
+                try:
+                    t = float(r.get("ts"))
+                except (TypeError, ValueError):
+                    continue
+                if e and (e not in last or t > last[e]):
+                    last[e] = t
+    return last
+
+
+def ingest_entity_scores(es, lab_dir, cfg, spread):
     results = evaluate_lab(lab_dir, cfg, model_path=cfg.get(
         "ueba", "baseline", "model_path", default="models/isoforest.joblib"))
     recreate(es, "c2-entity-scores", {"properties": {
         "@timestamp": {"type": "date"}, "entity": {"type": "keyword"},
         "label": {"type": "keyword"}, "attack_type": {"type": "keyword"},
         "verdict": {"type": "keyword"}, "confidence": {"type": "float"},
-        "ueba_anomaly": {"type": "float"}}})
-    now = datetime.now(timezone.utc).isoformat()
+        "ueba_anomaly": {"type": "float"}, "risk": {"type": "integer"}}})
+    last = _host_last_ts(lab_dir)
     docs = []
     gt = results["ground_truth"]
     for e in gt:
         docs.append({"_index": "c2-entity-scores", "_id": e, "_source": {
-            "@timestamp": now, "entity": e,
+            "@timestamp": spread.iso(last.get(e)), "entity": e,
             "label": "attack" if gt[e] == 1 else "benign",
             "attack_type": results["attack_type"].get(e),
             "verdict": "flagged" if results["C_predictions"][e] == 1 else "clear",
             "confidence": results["C_confidence"][e],
-            "ueba_anomaly": results["ueba_anomaly"][e]}})
+            "ueba_anomaly": results["ueba_anomaly"][e],
+            "risk": int(round(results["C_confidence"][e] * 100))}})
     helpers.bulk(es, docs)
     return len(docs), results
 
 
-def ingest_zeek(es, lab_dir):
+def ingest_zeek(es, lab_dir, spread):
     manifest = json.loads((lab_dir / "manifest.json").read_text())
     ent_map = manifest["entities"]
     label_of = {ip: ("attack" if role != "benign" else "benign") for ip, role in ent_map.items()}
@@ -101,7 +150,7 @@ def ingest_zeek(es, lab_dir):
         docs = []
         for r in zeek_parser.read_log(p):
             ent = r.get("id.orig_h")
-            docs.append({"_index": idx, "_source": {**r, "@timestamp": _iso(r.get("ts")),
+            docs.append({"_index": idx, "_source": {**r, "@timestamp": spread.iso(r.get("ts")),
                          "entity": ent, "label": label_of.get(ent, "other"),
                          "role": role_of.get(ent, "other")}})
         if docs:
@@ -110,7 +159,14 @@ def ingest_zeek(es, lab_dir):
     return total
 
 
-def ingest_suricata(es, lab_dir):
+def _eve_epoch(ts_iso):
+    try:
+        return datetime.fromisoformat(ts_iso.replace("Z", "+00:00")).timestamp()
+    except (TypeError, ValueError, AttributeError):
+        return None
+
+
+def ingest_suricata(es, lab_dir, spread):
     manifest = json.loads((lab_dir / "manifest.json").read_text())
     role_of = manifest.get("entities", {})
     recreate(es, "suricata-alerts", {"properties": {"@timestamp": {"type": "date"},
@@ -124,12 +180,61 @@ def ingest_suricata(es, lab_dir):
             a = ev.get("alert", {})
             src = ev.get("src_ip")
             docs.append({"_index": "suricata-alerts", "_source": {
-                "@timestamp": ev.get("timestamp", datetime.now(timezone.utc).isoformat()),
+                "@timestamp": spread.iso(_eve_epoch(ev.get("timestamp"))),
                 "signature": a.get("signature"), "category": a.get("category"),
                 "src_ip": src, "entity": src, "scenario": role_of.get(src, "other"),
                 "dest_ip": ev.get("dest_ip")}})
     if docs:
         helpers.bulk(es, docs, raise_on_error=False)
+    return len(docs)
+
+
+def ingest_eval(es, results):
+    """A/B/C comparison metrics as one doc per (config, metric) for a grouped bar chart."""
+    recreate(es, "c2-eval", {"properties": {
+        "@timestamp": {"type": "date"}, "config": {"type": "keyword"},
+        "config_label": {"type": "keyword"}, "metric": {"type": "keyword"},
+        "value": {"type": "float"}}})
+    now = datetime.now(timezone.utc).isoformat()
+    rows = {
+        "A · signature-only": results["config_A_signature"],
+        f"B · best single ({results['config_B_best']['indicator']})": results["config_B_best"],
+        "C · multi-indicator + UEBA": results["config_C_multi_ueba"],
+    }
+    docs = []
+    for label, m in rows.items():
+        cfg_key = label.split(" ")[0]
+        for metric in ("precision", "recall", "f1", "fpr"):
+            docs.append({"_index": "c2-eval", "_source": {
+                "@timestamp": now, "config": cfg_key, "config_label": label,
+                "metric": metric, "value": m[metric]}})
+    helpers.bulk(es, docs)
+    return len(docs)
+
+
+def ingest_indicator_scores(es, lab_dir, cfg, spread):
+    """One doc per (host, indicator) sub-score — powers the entity×indicator heatmap."""
+    from c2detect import pipeline
+    manifest = json.loads((lab_dir / "manifest.json").read_text())
+    ent_map = manifest["entities"]
+    ccfg = Config(raw={**cfg.raw, "paths": {"zeek_log_dir": str(lab_dir),
+                 "ja3_baseline": str(lab_dir / "ja3_baseline.txt")}})
+    feats = pipeline.build_feature_vectors(ccfg)
+    last = _host_last_ts(lab_dir)
+    recreate(es, "c2-indicator-scores", {"properties": {
+        "@timestamp": {"type": "date"}, "entity": {"type": "keyword"},
+        "label": {"type": "keyword"}, "indicator": {"type": "keyword"},
+        "subscore": {"type": "float"}}})
+    docs = []
+    for e, fv in feats.items():
+        if e not in ent_map:
+            continue
+        lbl = "attack" if ent_map[e] != "benign" else "benign"
+        for ind, val in fv.items():
+            docs.append({"_index": "c2-indicator-scores", "_source": {
+                "@timestamp": spread.iso(last.get(e)), "entity": e, "label": lbl,
+                "indicator": ind, "subscore": round(val, 3)}})
+    helpers.bulk(es, docs)
     return len(docs)
 
 
@@ -143,15 +248,20 @@ def main():
     es = make_es(args.es)
     cfg = Config.load(args.config)
     lab = Path(args.lab)
+    spread = TimeSpread(lab)
 
-    n_scores, _ = ingest_entity_scores(es, lab, cfg)
-    z = ingest_zeek(es, lab)
-    n_suri = ingest_suricata(es, lab)
+    n_scores, results = ingest_entity_scores(es, lab, cfg, spread)
+    z = ingest_zeek(es, lab, spread)
+    n_suri = ingest_suricata(es, lab, spread)
+    n_eval = ingest_eval(es, results)
+    n_ind = ingest_indicator_scores(es, lab, cfg, spread)
     es.indices.refresh(index="_all")
     print(f"c2-entity-scores: {n_scores} real hosts")
     for k, v in z.items():
         print(f"{k}: {v} records")
     print(f"suricata-alerts: {n_suri} alerts")
+    print(f"c2-eval: {n_eval} metric points")
+    print(f"c2-indicator-scores: {n_ind} (host x indicator)")
 
 
 if __name__ == "__main__":

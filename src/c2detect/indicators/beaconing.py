@@ -26,11 +26,29 @@ def coefficient_of_variation(timestamps: Sequence[float]) -> float:
     return float(iat.std() / mean)
 
 
+def robust_cv(timestamps: Sequence[float]) -> float:
+    """Gap-robust dispersion of inter-arrivals = (scaled MAD) / median.
+
+    Uses the median inter-arrival and the median absolute deviation instead of mean/std, so a
+    beacon that pauses and resumes (a few large inter-session gaps) is still seen as regular — the
+    minority of large gaps barely move the median or the MAD. This is how real low-and-slow beacons
+    behave, and it removes the multi-burst capture artifact that naive CV suffers from.
+    """
+    iat = inter_arrivals(timestamps)
+    if iat.size == 0:
+        return float("nan")
+    med = float(np.median(iat))
+    if med == 0:
+        return float("nan")
+    mad = float(np.median(np.abs(iat - med)))
+    return (1.4826 * mad) / med          # 1.4826 scales MAD to std for a normal distribution
+
+
 def subscore(timestamps: Sequence[float], cv_low: float = 0.10, min_events: int = 6) -> float:
     """1.0 = highly regular beacon, 0.0 = irregular/insufficient data."""
     if len(timestamps) < min_events:
         return 0.0
-    cv = coefficient_of_variation(timestamps)
+    cv = robust_cv(timestamps)
     if cv != cv:  # NaN
         return 0.0
     # map: cv <= cv_low -> ~1.0 ; cv >= 3*cv_low -> ~0.0

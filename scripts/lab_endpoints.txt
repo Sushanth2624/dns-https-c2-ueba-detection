@@ -1,0 +1,17 @@
+# Lab endpoint definitions (pipe-delimited): name | ip | role | sim-command
+# role is the ground-truth label used by evaluation (benign/dga/dns_tunnel/beacon/doh).
+# Edit this file to add/remove hosts; lab_up.sh + lab_capture.sh read it.
+ep-benign1|10.50.0.11|benign|python3 /opt/traffic/benign/generate_benign.py --count 45 --min-sleep 0.2 --max-sleep 1.3
+ep-benign2|10.50.0.12|benign|python3 /opt/traffic/benign/generate_benign.py --count 40 --min-sleep 0.2 --max-sleep 1.5
+ep-benign3|10.50.0.13|benign|python3 /opt/traffic/benign/generate_benign.py --count 40 --min-sleep 0.3 --max-sleep 1.6
+ep-benign4|10.50.0.14|benign|python3 /opt/traffic/benign/generate_benign.py --count 35 --min-sleep 0.2 --max-sleep 1.8
+ep-benign5|10.50.0.15|benign|python3 /opt/traffic/benign/generate_benign.py --count 45 --min-sleep 0.2 --max-sleep 1.2
+ep-benign6|10.50.0.16|benign|python3 /opt/traffic/benign/generate_benign.py --count 30 --min-sleep 0.4 --max-sleep 2.0
+ep-dga-alpha|10.50.0.21|dga|python3 /opt/traffic/malicious/dga_sim.py 180 com
+ep-dga-beta|10.50.0.22|dga|python3 /opt/traffic/malicious/dga_sim.py 150 net
+ep-tunnel-sm|10.50.0.23|dns_tunnel|python3 /opt/traffic/malicious/dns_tunnel_sim.py tunnel.lab '' 30 45
+ep-tunnel-lg|10.50.0.24|dns_tunnel|python3 /opt/traffic/malicious/dns_tunnel_sim.py exfil.lab '' 42 80
+ep-beacon-fast|10.50.0.25|beacon|python3 /opt/traffic/malicious/beacon_sim.py 10.50.0.1 2 0.03 28 c2.internal.lab 8443
+ep-beacon-slow|10.50.0.26|beacon|python3 /opt/traffic/malicious/beacon_sim.py 10.50.0.1 4 0.04 16 cdn.internal.lab 8443
+ep-doh-cf|10.50.0.27|doh|python3 /opt/traffic/malicious/doh_sim.py https://cloudflare-dns.com/dns-query 2 20 0.05
+ep-doh-quad9|10.50.0.28|doh|python3 /opt/traffic/malicious/doh_sim.py https://dns.quad9.net/dns-query 3 14 0.05
