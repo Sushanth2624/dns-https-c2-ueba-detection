@@ -57,6 +57,10 @@ layers (auto-generated CA + node certs under `/etc/elasticsearch/certs/`). So:
   in **`config/secrets.env`** (gitignored — never committed).
 - Kibana connects to ES over TLS as `kibana_system` (`/etc/kibana/kibana.yml`) and now shows a
   **login page**; sign in as `elastic`.
+- **The Kibana UI itself is HTTPS** (`server.ssl.enabled`, self-signed cert under
+  `/etc/kibana/certs/` with SANs for `172.16.242.14`/localhost). Browse
+  **https://172.16.242.14:5601** (accept the self-signed cert warning). Plain HTTP is refused.
+  `scripts/build_dashboards.py` talks to Kibana over HTTPS with an unverified context.
 - Every tool reads the ES password from the `ELASTIC_PASSWORD` env var or `config/secrets.env`:
   the pipeline (`c2detect.cli run`), `scripts/ingest_es.py`, and `scripts/build_dashboards.py`
   (which authenticates to the Kibana API). Committed configs contain **no passwords**.

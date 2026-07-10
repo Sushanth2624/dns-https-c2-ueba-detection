@@ -11,11 +11,14 @@ Usage: build_dashboards.py [kibana_url]
 import base64
 import json
 import os
+import ssl
 import sys
 import urllib.request
 from pathlib import Path
 
-KBN = sys.argv[1] if len(sys.argv) > 1 else "http://localhost:5601"
+KBN = sys.argv[1] if len(sys.argv) > 1 else "https://localhost:5601"
+# Kibana serves a self-signed lab cert; don't verify (lab, localhost).
+_SSL = ssl._create_unverified_context()
 
 
 def _kbn_auth_header():
@@ -55,7 +58,7 @@ def api(method, path, body=None):
     req = urllib.request.Request(
         f"{KBN}{path}", data=(json.dumps(body).encode() if body is not None else None),
         headers={"kbn-xsrf": "true", "Content-Type": "application/json", **AUTH}, method=method)
-    with urllib.request.urlopen(req, timeout=60) as r:
+    with urllib.request.urlopen(req, timeout=60, context=_SSL) as r:
         return r.status, r.read().decode()
 
 
@@ -195,7 +198,7 @@ def import_ndjson(text):
     req = urllib.request.Request(f"{KBN}/api/saved_objects/_import?overwrite=true", data=body,
         headers={"kbn-xsrf": "true",
                  "Content-Type": f"multipart/form-data; boundary={boundary}", **AUTH}, method="POST")
-    with urllib.request.urlopen(req, timeout=90) as r:
+    with urllib.request.urlopen(req, timeout=90, context=_SSL) as r:
         return r.status, r.read().decode()
 
 
