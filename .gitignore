@@ -28,3 +28,4 @@ data/tmp/
 data/eval/corpus/
 models/
 scripts/install_infra.log
+config/secrets.env

@@ -27,7 +27,7 @@ evaluate-lab:
 
 # Full lab demo: create hosts -> inline capture -> A/B/C -> alerts+telemetry to ES -> dashboards
 lab-demo: lab-up lab-capture evaluate-lab
-	-curl -s -X DELETE "http://localhost:9200/c2-alerts" >/dev/null
+	-. config/secrets.env; curl -s -k -u elastic:$$ELASTIC_PASSWORD -X DELETE "https://localhost:9200/c2-alerts" >/dev/null
 	PYTHONPATH=src $(PY) -m c2detect.cli run --config config/config.lab.yaml
 	PYTHONPATH=src $(PY) scripts/ingest_es.py --lab data/captures/lab --config config/config.lab.yaml
 	$(PY) scripts/build_dashboards.py
@@ -38,7 +38,7 @@ lab-down:
 
 # Single-host demo (no Docker): capture on host NIC -> evaluate -> ES -> dashboards
 demo: dataset evaluate
-	-curl -s -X DELETE "http://localhost:9200/c2-alerts" >/dev/null
+	-. config/secrets.env; curl -s -k -u elastic:$$ELASTIC_PASSWORD -X DELETE "https://localhost:9200/c2-alerts" >/dev/null
 	PYTHONPATH=src $(PY) -m c2detect.cli run --config config/config.demo.yaml
 	$(PY) scripts/build_dashboards.py
 	@echo "Kibana: http://localhost:5601/app/dashboards -> 'DNS/HTTPS C2 — Behavioral Detection'"

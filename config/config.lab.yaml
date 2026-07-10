@@ -19,6 +19,7 @@ mitre_map:
   doh_endpoint: ["T1071.004","T1572"]
   session_shape: ["T1071.001","T1573"]
 elasticsearch:
-  hosts: ["http://localhost:9200"]
+  hosts: ["https://localhost:9200"]
   alert_index: c2-alerts
-  verify_certs: false
+  user: elastic            # password read from ELASTIC_PASSWORD env (see config/secrets.env)
+  verify_certs: false      # self-signed lab CA; set a ca path to verify

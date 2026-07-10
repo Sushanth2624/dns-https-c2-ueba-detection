@@ -8,12 +8,33 @@ Dashboards:
 
 Usage: build_dashboards.py [kibana_url]
 """
+import base64
 import json
+import os
 import sys
 import urllib.request
 from pathlib import Path
 
 KBN = sys.argv[1] if len(sys.argv) > 1 else "http://localhost:5601"
+
+
+def _kbn_auth_header():
+    """Basic auth for Kibana when ES security is on (elastic:<ELASTIC_PASSWORD>)."""
+    pw = os.environ.get("ELASTIC_PASSWORD")
+    if not pw:
+        sec = Path(__file__).resolve().parent.parent / "config" / "secrets.env"
+        if sec.exists():
+            for line in sec.read_text().splitlines():
+                if line.startswith("ELASTIC_PASSWORD="):
+                    pw = line.split("=", 1)[1].strip()
+                    break
+    if not pw:
+        return {}
+    tok = base64.b64encode(f"elastic:{pw}".encode()).decode()
+    return {"Authorization": f"Basic {tok}"}
+
+
+AUTH = _kbn_auth_header()
 ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / "dashboards" / "kibana" / "c2-dashboards.ndjson"
 
@@ -33,7 +54,7 @@ count_metric = {"id": "1", "enabled": True, "type": "count", "schema": "metric",
 def api(method, path, body=None):
     req = urllib.request.Request(
         f"{KBN}{path}", data=(json.dumps(body).encode() if body is not None else None),
-        headers={"kbn-xsrf": "true", "Content-Type": "application/json"}, method=method)
+        headers={"kbn-xsrf": "true", "Content-Type": "application/json", **AUTH}, method=method)
     with urllib.request.urlopen(req, timeout=60) as r:
         return r.status, r.read().decode()
 
@@ -173,7 +194,7 @@ def import_ndjson(text):
             f"Content-Type: application/x-ndjson\r\n\r\n{text}\r\n--{boundary}--\r\n").encode()
     req = urllib.request.Request(f"{KBN}/api/saved_objects/_import?overwrite=true", data=body,
         headers={"kbn-xsrf": "true",
-                 "Content-Type": f"multipart/form-data; boundary={boundary}"}, method="POST")
+                 "Content-Type": f"multipart/form-data; boundary={boundary}", **AUTH}, method="POST")
     with urllib.request.urlopen(req, timeout=90) as r:
         return r.status, r.read().decode()
 

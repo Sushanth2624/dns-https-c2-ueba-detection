@@ -44,9 +44,30 @@ https://artifacts.elastic.co/packages/8.x/apt stable main" \
 sudo apt-get update && sudo apt-get install -y elasticsearch kibana
 ```
 
-**Elasticsearch lab config** (`/etc/elasticsearch/elasticsearch.yml`): `xpack.security.enabled: false`,
-`discovery.type: single-node`, `http.host: localhost`; heap capped at 2 GB. Kibana:
-`elasticsearch.hosts: ["http://localhost:9200"]`. Both enabled + started via `systemctl`.
+**Elasticsearch config** (`/etc/elasticsearch/elasticsearch.yml`): `discovery.type: single-node`,
+`http.host: 0.0.0.0` (reachable on the VM's LAN IP), heap capped at 2 GB.
+
+### Security (authentication + TLS)
+
+Elasticsearch runs with `xpack.security.enabled: true` and TLS on both the HTTP and transport
+layers (auto-generated CA + node certs under `/etc/elasticsearch/certs/`). So:
+
+- ES is **HTTPS-only** and rejects unauthenticated requests.
+- The `elastic` and `kibana_system` passwords are set with `elasticsearch-reset-password` and stored
+  in **`config/secrets.env`** (gitignored — never committed).
+- Kibana connects to ES over TLS as `kibana_system` (`/etc/kibana/kibana.yml`) and now shows a
+  **login page**; sign in as `elastic`.
+- Every tool reads the ES password from the `ELASTIC_PASSWORD` env var or `config/secrets.env`:
+  the pipeline (`c2detect.cli run`), `scripts/ingest_es.py`, and `scripts/build_dashboards.py`
+  (which authenticates to the Kibana API). Committed configs contain **no passwords**.
+
+```bash
+source config/secrets.env          # exports ELASTIC_PASSWORD etc.
+curl -k -u elastic:$ELASTIC_PASSWORD https://localhost:9200/_cluster/health
+```
+
+To rotate a password: `sudo /usr/share/elasticsearch/bin/elasticsearch-reset-password -u elastic -b
+--url https://localhost:9200`, then update `config/secrets.env`.
 
 ## Key single-host adaptations (and why they are faithful)
 

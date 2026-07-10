@@ -12,10 +12,32 @@ Usage: ingest_es.py [--lab data/captures/lab] [--config config/config.lab.yaml] 
 from __future__ import annotations
 import argparse
 import json
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 
 from elasticsearch import Elasticsearch, helpers
+
+
+def _es_password():
+    """ELASTIC_PASSWORD from env, else parsed from config/secrets.env (gitignored)."""
+    pw = os.environ.get("ELASTIC_PASSWORD")
+    if pw:
+        return pw
+    sec = Path(__file__).resolve().parent.parent / "config" / "secrets.env"
+    if sec.exists():
+        for line in sec.read_text().splitlines():
+            if line.startswith("ELASTIC_PASSWORD="):
+                return line.split("=", 1)[1].strip()
+    return None
+
+
+def make_es(host):
+    pw = _es_password()
+    if host.startswith("https") or pw:
+        return Elasticsearch(host, basic_auth=("elastic", pw or ""),
+                             verify_certs=False, ssl_show_warn=False)
+    return Elasticsearch(host)
 
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
@@ -115,10 +137,10 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--lab", default="data/captures/lab")
     ap.add_argument("--config", default="config/config.lab.yaml")
-    ap.add_argument("--es", default="http://localhost:9200")
+    ap.add_argument("--es", default="https://localhost:9200")
     args = ap.parse_args()
 
-    es = Elasticsearch(args.es)
+    es = make_es(args.es)
     cfg = Config.load(args.config)
     lab = Path(args.lab)
 

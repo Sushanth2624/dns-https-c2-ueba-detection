@@ -1,9 +1,25 @@
 """Command-line entrypoint: `python -m c2detect.cli run --config config/config.yaml`."""
 from __future__ import annotations
 import json
+import os
 import click
 from .config import Config
 from . import pipeline
+
+
+def _elastic_password():
+    """ELASTIC_PASSWORD from env, else parsed from config/secrets.env (gitignored)."""
+    pw = os.environ.get("ELASTIC_PASSWORD")
+    if pw:
+        return pw
+    from pathlib import Path
+    for base in (Path.cwd(), Path(__file__).resolve().parents[2]):
+        sec = base / "config" / "secrets.env"
+        if sec.exists():
+            for line in sec.read_text().splitlines():
+                if line.startswith("ELASTIC_PASSWORD="):
+                    return line.split("=", 1)[1].strip()
+    return None
 
 
 @click.group()
@@ -22,9 +38,11 @@ def run(config_path, dry_run):
         return
     from .output.elastic import AlertWriter
     es = cfg.get("elasticsearch")
+    # password precedence: config value, else ELASTIC_PASSWORD env / config/secrets.env
+    password = es.get("password") or _elastic_password()
     writer = AlertWriter(
         hosts=es["hosts"], index=es.get("alert_index", "c2-alerts"),
-        user=es.get("user"), password=es.get("password"),
+        user=es.get("user"), password=password,
         verify_certs=es.get("verify_certs", False),
     )
     writer.ensure_index()

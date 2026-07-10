@@ -37,11 +37,12 @@ thresholds:
   alert_confidence_min: 0.6
 
 elasticsearch:
-  hosts: ["http://localhost:9200"]
+  hosts: ["https://localhost:9200"]   # TLS; use http://... only if security is disabled
   alert_index: c2-alerts
-  # user: elastic
-  # password: change-me      # keep real creds only in config.yaml, never commit
-  verify_certs: false
+  user: elastic
+  # password: set via ELASTIC_PASSWORD env or config/secrets.env (never commit real creds)
+  verify_certs: false                 # self-signed lab CA; point to a ca file to verify
+
 
 mitre_map:
   dns_entropy: ["T1568.002", "T1071.004"]

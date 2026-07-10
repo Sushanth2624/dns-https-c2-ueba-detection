@@ -9,6 +9,10 @@ class AlertWriter:
     def __init__(self, hosts, index: str, user=None, password=None, verify_certs=False):
         from elasticsearch import Elasticsearch  # lazy import
         kwargs = {"verify_certs": verify_certs}
+        if not verify_certs:
+            kwargs["ssl_show_warn"] = False           # quiet self-signed-lab TLS warnings
+            import urllib3
+            urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
         if user and password:
             kwargs["basic_auth"] = (user, password)
         self.es = Elasticsearch(hosts, **kwargs)

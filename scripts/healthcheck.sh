@@ -8,9 +8,12 @@ echo "== services =="
 for svc in elasticsearch kibana; do
   printf "%s: %s\n" "$svc" "$(systemctl is-active "$svc" 2>/dev/null)"
 done
-echo "== elasticsearch =="
-curl -s http://localhost:9200/_cluster/health?pretty 2>/dev/null | grep -E '"status"|"number_of_nodes"' || echo "ES not reachable"
-echo -n "c2-alerts docs: "; curl -s "http://localhost:9200/c2-alerts/_count" 2>/dev/null | jq -r '.count' 2>/dev/null || echo "n/a"
+echo "== elasticsearch (TLS + auth) =="
+[ -f config/secrets.env ] && . config/secrets.env
+ESP="${ELASTIC_PASSWORD:-}"
+curl -s -k -u "elastic:$ESP" https://localhost:9200/_cluster/health?pretty 2>/dev/null \
+  | grep -E '"status"|"number_of_nodes"' || echo "ES not reachable (check config/secrets.env)"
+echo -n "c2-alerts docs: "; curl -s -k -u "elastic:$ESP" "https://localhost:9200/c2-alerts/_count" 2>/dev/null | jq -r '.count' 2>/dev/null || echo "n/a"
 echo "== kibana =="
 curl -s -o /dev/null -w 'kibana http=%{http_code}\n' http://localhost:5601/api/status 2>/dev/null || echo "Kibana not reachable"
 echo "== captures =="
