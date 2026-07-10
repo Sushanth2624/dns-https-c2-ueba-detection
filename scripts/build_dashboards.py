@@ -73,6 +73,14 @@ def vis(vid, title, vis_state, dv):
                            "type": "index-pattern", "id": dv}]}
 
 
+def with_query(obj, kql):
+    """Bake a KQL filter into a visualization's search source (keeps the data-view ref)."""
+    ss = {"query": {"query": kql, "language": "kuery"}, "filter": [],
+          "indexRefName": "kibanaSavedObjectMeta.searchSourceJSON.index"}
+    obj["attributes"]["kibanaSavedObjectMeta"]["searchSourceJSON"] = json.dumps(ss)
+    return obj
+
+
 def terms(field, size, schema, order_by="1", order="desc"):
     return {"id": "2", "enabled": True, "type": "terms", "schema": schema,
             "params": {"field": field, "size": size, "order": order, "orderBy": order_by,
@@ -241,8 +249,8 @@ objects += [
     timeseries("exec-timeline", "Network activity over 24h (benign vs attack)", "zeek-dns-view",
                "area", split="label", interval="h"),
     bars("exec-mitre", "MITRE ATT&CK techniques", "c2-alerts-view", "mitre", 12, horizontal=True),
-    bars("exec-abc", "Detection quality: A vs B vs C (higher = better)", "c2-eval-view",
-         "config_label", 3, metric=AVG("value"), split="metric"),
+    with_query(bars("exec-abc", "Detection quality — F1 score (A vs B vs C, higher = better)",
+                    "c2-eval-view", "config_label", 3, metric=AVG("value")), "metric : f1"),
     table("exec-top", "Highest-risk hosts", "c2-scores-view",
           [MAX("confidence"),
            {"id": "2", "type": "terms", "schema": "bucket", "enabled": True,
