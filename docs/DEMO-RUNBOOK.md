@@ -199,3 +199,111 @@ Expected: **F1  A ≈ 0.55   B ≈ 0.67   C = 1.00**, false positives = 0 for C.
 **Repository:** github.com/Sushanth2624/dns-https-c2-ueba-detection
 **Other docs:** `docs/full-report.html` (whitepaper), `docs/architecture.html`,
 `docs/pin-to-pin-walkthrough.html` (the exact mechanics).
+
+---
+
+## 10. Presenter's script — exactly what to SAY and CLICK
+
+The "say" lines are written so you can almost read them verbatim.
+
+### 5 minutes before you present (do this once)
+```bash
+cd /home/analysis/dns-https-c2-ueba-detection
+source config/secrets.env
+make lab-demo          # refreshes all data so timestamps are within "Last 24 hours"
+```
+Then open the browser → **https://172.16.242.14:5601** → click through the certificate warning →
+log in `elastic` / (password from `cat config/secrets.env`). Open the **c2-exec** dashboard and set
+the time picker (top-right) to **Last 24 hours**. Leave a terminal open too.
+
+### Scene 1 — The problem (just talk, ~30 sec)
+> "When malware infects a computer, it has to secretly phone home to the attacker — that's called
+> command-and-control. Attackers hide this inside normal DNS and encrypted HTTPS traffic, so
+> traditional signature-based tools miss it. My project detects it by **behaviour** instead: it
+> watches how each machine acts and flags the ones behaving like they're talking to a controller."
+
+### Scene 2 — Show the setup (terminal)
+> "Everything runs on one analysis machine. On it I created 14 endpoint hosts as containers — 6
+> normal and 8 running different attack techniques."
+```bash
+docker ps --format '{{.Names}}   {{.Label "c2lab.role"}}' | sort
+```
+> "Each is a separate host with its own IP address, generating real traffic."
+
+### Scene 3 — Make a host attack, live (terminal)
+> "Let me make one host behave like DGA malware — it invents random domains to find its controller."
+```bash
+docker exec ep-dga-alpha python3 -c "
+import socket,random,string
+print('DGA malware trying to find its controller...')
+for _ in range(6):
+    d=''.join(random.choices(string.ascii_lowercase+string.digits,k=12))+'.com'
+    try: socket.gethostbyname(d); print(' ',d,'RESOLVED')
+    except Exception: print(' ',d,'-> NXDOMAIN (dead)')
+"
+```
+> "Those failed lookups are exactly the behavioural fingerprint my system catches."
+
+### Scene 4 — The executive dashboard (browser → c2-exec)
+> "My analysis machine captured all of this inline, ran it through the sensors, scored every host,
+> and here's the result."
+
+Point at, in order:
+- the tiles: "**14 hosts monitored, 8 threats detected, 0 false positives.**"
+- the donut: "benign vs attack split."
+- the bar chart on the right: "**this is the key result — detection quality. Signatures score
+  0.55, the best single behaviour 0.67, my full system 1.0.**"
+- the table at the bottom: "the highest-risk hosts, ranked by confidence."
+
+### Scene 5 — The threat heatmap (browser → c2-threat)
+> "This heatmap shows *which* behaviour fired for *which* host. Red means that behaviour triggered.
+> The attack hosts light up on their specific behaviours — the DGA hosts on entropy and failed
+> lookups, the beacons on timing — while the normal hosts stay cool. Nothing is a black box; you can
+> see exactly why each host was flagged."
+
+### Scene 6 — One explained alert (terminal)
+> "And every alert is fully explained. Here's one, straight from the database."
+```bash
+curl -s -k -u elastic:$ELASTIC_PASSWORD "https://localhost:9200/c2-alerts/_search" \
+  -H 'Content-Type: application/json' -d '{"size":1,"query":{"term":{"entity":"10.50.0.21"}}}' | python3 -m json.tool
+```
+> "Verdict *likely-C2*, the confidence, the exact behaviours that contributed with plain-English
+> reasons, the matching MITRE ATT&CK techniques, and recommended actions for the analyst."
+
+### Scene 7 — The result, stated (terminal)
+> "Measured head-to-head against the ground truth:"
+```bash
+make evaluate-lab
+```
+> Shows `F1  A=0.55  B=0.67  C=1.00` and `FPR ... C=0.00`.
+>
+> Closing line: "So fusing multiple behaviours with UEBA caught **all four** attack techniques with
+> **zero false alarms**, beating both signatures and any single indicator. That's the contribution:
+> multi-indicator correlation with explainable verdicts."
+
+### If they ask… (cheat sheet)
+- **"How many VMs?"** → "One analysis VM. The 14 endpoint hosts are containers on it, because the
+  host doesn't support nested virtualization — but they're real separate hosts with distinct IPs and
+  real traffic."
+- **"Is this real malware?"** → "No — safe simulators that reproduce the *behaviours* (DGA, tunneling,
+  beaconing, DoH) in an isolated lab. No real C2, no external targets."
+- **"What's your contribution vs existing tools?"** → "Zeek, Suricata and the anomaly model are
+  existing tools. My contribution is the **correlation + explainability engine** — turning many weak
+  signals plus a UEBA score into one ranked, explained verdict — and the A/B/C evaluation proving it
+  beats signatures."
+- **"Isn't the UEBA just an off-the-shelf model?"** → "Yes, an IsolationForest plus z-score —
+  deliberately, because the novelty is the correlation, the explainability, and the evaluation, not
+  the anomaly model."
+- **"How do you handle false positives?"** → "Correlation requires several behaviours to agree, so a
+  benign host doing one odd thing never crosses the threshold — that's why the false-positive rate is
+  zero."
+- **"Why do beacons show 'suspicious' not 'likely_c2'?"** → "They're still correctly flagged; the
+  confidence is a bit lower because a pure beacon has fewer corroborating signals than a DGA host —
+  which is honest and correct."
+
+### If something breaks mid-demo
+- **Dashboard empty?** → time picker isn't on "Last 24 hours." Fix it, or re-run `make lab-demo`.
+- **`curl` says unauthorized?** → you didn't run `source config/secrets.env` this session.
+- **Kibana won't load?** → `sudo systemctl restart kibana`, wait ~60s.
+- **Worst case (nothing loads):** fall back to the terminal — `make evaluate-lab` alone proves the
+  whole result, and the committed dashboard screenshots are in `docs/images/`.
