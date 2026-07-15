@@ -156,7 +156,31 @@ s("", """<h2>Contribution &amp; novelty</h2>
 </ul>
 <p class="pull">The lab and tools are integration. The <span class="hl">correlation + explainability engine and the evaluation</span> are the original work.</p>""")
 
-# 16 thanks
+# 16 limitations & future work
+s("", """<h2>Limitations &amp; future work</h2>
+<div class="two">
+<div>
+<div class="colh red">Limitations — honestly</div>
+<ul class="checks bad sm">
+<li>Compressed benign baseline (minutes, not a 7-day window)</li>
+<li>Container endpoints, not full VMs; lab traffic, not live enterprise scale</li>
+<li>Scripted attack simulators — cleaner than real, evasive C2</li>
+<li>Batch (not real-time); single-node ES; JA4 best-effort</li>
+</ul>
+</div>
+<div>
+<div class="colh acc">Future work</div>
+<ul class="checks sm">
+<li>Real-time streaming detection on a live network tap</li>
+<li>Longer, real benign baseline; more entity diversity</li>
+<li>Learned / adaptive indicator weights</li>
+<li>Evaluate against real C2 frameworks (Sliver, Cobalt Strike)</li>
+<li>Automated response via SOAR integration</li>
+</ul>
+</div>
+</div>""")
+
+# 17 thanks
 s("center title", """<h1>Thank you</h1>
 <p class="lead">Behavioral Detection of Hidden DNS/HTTPS C2 — a working system, deployed end-to-end,
 that beats signatures with explainable verdicts.</p>
@@ -196,6 +220,11 @@ b{color:#fff;font-weight:700}.hl{color:var(--acc);font-weight:700}.acc{color:var
 .checks li{padding:10px 0 10px 42px;position:relative}
 .checks li::before{content:"✓";position:absolute;left:0;color:var(--acc);font-weight:800}
 .checks.bad li::before{content:"✗";color:var(--red)}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:44px;width:100%;margin-top:8px}
+.colh{font-family:var(--mono);font-size:clamp(.9rem,1.5vw,1.15rem);letter-spacing:.06em;text-transform:uppercase;margin-bottom:8px;font-weight:700}
+.colh.red{color:var(--red)}.colh.acc{color:var(--acc)}
+.checks.sm{font-size:clamp(.85rem,1.45vw,1.15rem);max-width:none}
+.checks.sm li{padding:7px 0 7px 32px}
 .grid8{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-top:24px;width:100%}
 .g{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:22px;text-align:center;
  font-weight:600;font-size:clamp(.95rem,1.6vw,1.3rem)}
@@ -213,7 +242,7 @@ b{color:#fff;font-weight:700}.hl{color:var(--acc);font-weight:700}.acc{color:var
 .bar{position:absolute;top:0;left:0;height:4px;background:var(--acc);transition:width .25s;z-index:5}
 .pg{position:absolute;bottom:20px;right:28px;font-family:var(--mono);color:var(--mut);font-size:.9rem;z-index:5}
 .hint{position:absolute;bottom:20px;left:28px;font-family:var(--mono);color:var(--mut2);font-size:.8rem;z-index:5}
-@media(max-width:700px){.cols3,.cols4,.grid8{grid-template-columns:1fr 1fr}}
+@media(max-width:700px){.cols3,.cols4,.grid8,.two{grid-template-columns:1fr 1fr}}
 """
 
 JS = """
