@@ -1,0 +1,109 @@
+<style>
+:root{--ink:#111;--mut:#555;--acc:#0a6f7c;--line:#cfd8dc;--say:#083b42;--box:#f3f6f7;--red:#b3261e}
+*{box-sizing:border-box}
+body{margin:0;background:#e9edf0;color:var(--ink);
+  font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.card{width:210mm;min-height:297mm;margin:12px auto;background:#fff;padding:12mm 12mm 8mm;
+  box-shadow:0 2px 14px rgba(0,0,0,.15)}
+.mono{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace}
+h1{font-size:19pt;margin:0;letter-spacing:-.01em}
+.sub{color:var(--mut);font-size:9.5pt;margin:2px 0 8px}
+.prep{border:1.5px solid var(--acc);border-radius:8px;padding:8px 12px;margin-bottom:10px;background:#f0f8f9}
+.prep b{color:var(--acc)}
+.prep .mono{font-size:8.6pt}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:9px 14px}
+.scene{border:1px solid var(--line);border-radius:8px;padding:8px 10px;break-inside:avoid}
+.sh{display:flex;align-items:center;gap:7px;margin-bottom:3px}
+.sn{flex:0 0 20px;height:20px;border-radius:50%;background:var(--acc);color:#fff;font-weight:800;
+  font-size:9.5pt;display:flex;align-items:center;justify-content:center;font-family:ui-monospace,monospace}
+.st{font-weight:700;font-size:10.5pt}
+.say{color:var(--say);font-size:9.4pt;line-height:1.35;margin:2px 0 5px}
+.say::before{content:"SAY  ";font-weight:800;color:var(--acc);font-size:7.5pt;letter-spacing:.08em}
+.do{background:var(--box);border-radius:5px;padding:5px 8px;font-size:8.2pt;line-height:1.45;
+  border-left:3px solid var(--acc);word-break:break-all}
+.do .tag{font-weight:800;color:var(--acc);font-size:7.5pt;letter-spacing:.08em}
+.click{color:var(--red);font-weight:700}
+.foot{margin-top:10px;border-top:1.5px solid var(--ink);padding-top:8px;display:grid;
+  grid-template-columns:1fr 1fr;gap:8px 16px;font-size:8.6pt}
+.foot b{color:var(--acc)}
+.foot .k{font-family:ui-monospace,monospace}
+.panic b{color:var(--red)}
+@media print{
+  body{background:#fff}
+  .card{width:auto;min-height:auto;margin:0;box-shadow:none;padding:8mm}
+  @page{size:A4;margin:8mm}
+}
+</style>
+<div class="card">
+  <h1>C2 Detection — Demo Cue Card</h1>
+  <div class="sub">Behavioral Detection of Hidden DNS/HTTPS Command-and-Control · Sushanth Sridhar</div>
+
+  <div class="prep">
+    <b>5 MIN BEFORE:</b>
+    <span class="mono">cd /home/analysis/dns-https-c2-ueba-detection &nbsp;·&nbsp; source config/secrets.env &nbsp;·&nbsp; make lab-demo</span>
+    → open <b>https://172.16.242.14:5601</b>, accept cert, log in <span class="mono">elastic</span>,
+    open <b>c2-exec</b>, set time = <b>Last 24 hours</b>.
+  </div>
+
+  <div class="grid">
+    <div class="scene">
+      <div class="sh"><span class="sn">1</span><span class="st">The problem</span></div>
+      <div class="say">Malware secretly phones home — "command-and-control" — hidden inside normal DNS &amp; encrypted HTTPS. Signatures miss it. I detect it by <b>behaviour</b>.</div>
+    </div>
+
+    <div class="scene">
+      <div class="sh"><span class="sn">2</span><span class="st">The setup</span></div>
+      <div class="say">One analysis machine, 14 endpoint hosts (containers): 6 normal, 8 attackers, each its own IP.</div>
+      <div class="do"><span class="tag">TYPE</span> <span class="mono">docker ps --format '{{.Names}}  {{.Label "c2lab.role"}}' | sort</span></div>
+    </div>
+
+    <div class="scene">
+      <div class="sh"><span class="sn">3</span><span class="st">Make a host attack (live)</span></div>
+      <div class="say">This host now acts like DGA malware — invents random domains to find its controller; they all fail.</div>
+      <div class="do"><span class="tag">TYPE</span> <span class="mono">docker exec ep-dga-alpha python3 /opt/traffic/malicious/dga_sim.py 20</span></div>
+    </div>
+
+    <div class="scene">
+      <div class="sh"><span class="sn">4</span><span class="st">Executive dashboard</span></div>
+      <div class="say">14 hosts, 8 threats, <b>0 false positives</b>. The bar chart: signatures 0.55, best single 0.67, <b>my system 1.0</b>.</div>
+      <div class="do"><span class="tag">CLICK</span> <span class="click">c2-exec</span> dashboard → point at the tiles, then the A/B/C bar chart.</div>
+    </div>
+
+    <div class="scene">
+      <div class="sh"><span class="sn">5</span><span class="st">The heatmap</span></div>
+      <div class="say">Which behaviour fired for which host. Red = triggered. Attackers light up on their behaviours; normal hosts stay cool. No black box.</div>
+      <div class="do"><span class="tag">CLICK</span> <span class="click">c2-threat</span> dashboard → point at the heatmap.</div>
+    </div>
+
+    <div class="scene">
+      <div class="sh"><span class="sn">6</span><span class="st">One explained alert</span></div>
+      <div class="say">Every verdict is explained: the behaviours that fired, plain-English reasons, MITRE techniques, and recommended actions.</div>
+      <div class="do"><span class="tag">TYPE</span> <span class="mono">curl -s -k -u elastic:$ELASTIC_PASSWORD "https://localhost:9200/c2-alerts/_search" -H 'Content-Type: application/json' -d '{"size":1,"query":{"term":{"entity":"10.50.0.21"}}}' | python3 -m json.tool</span></div>
+    </div>
+
+    <div class="scene">
+      <div class="sh"><span class="sn">7</span><span class="st">The result (closing)</span></div>
+      <div class="say">All four techniques caught, zero false alarms — beating signatures and any single behaviour. Contribution: <b>multi-indicator correlation + explainability</b>.</div>
+      <div class="do"><span class="tag">TYPE</span> <span class="mono">make evaluate-lab</span> &nbsp; → shows <b>F1 A=0.55 B=0.67 C=1.00</b></div>
+    </div>
+
+    <div class="scene" style="border-color:var(--acc)">
+      <div class="sh"><span class="sn" style="background:#333">?</span><span class="st">If asked</span></div>
+      <div class="say" style="margin-bottom:3px"><b>How many VMs?</b> One; the 14 hosts are containers (no nested virt).</div>
+      <div class="say" style="margin:0"><b>Real malware?</b> No — safe simulators of the behaviours, isolated lab.</div>
+    </div>
+  </div>
+
+  <div class="foot">
+    <div>
+      <b>LOGIN</b> &nbsp; Kibana <span class="k">https://172.16.242.14:5601</span><br>
+      user <span class="k">elastic</span> &nbsp; pass <span class="k">*IgXXI_J5XgSHLxvstZq</span><br>
+      Dashboards: <span class="k">c2-exec · c2-threat · c2-telemetry</span>
+    </div>
+    <div class="panic">
+      <b>IF IT BREAKS</b><br>
+      Dashboard empty → set time <b>Last 24 hours</b> (or re-run <span class="k">make lab-demo</span>)<br>
+      "unauthorized" → <span class="k">source config/secrets.env</span> · Kibana down → <span class="k">sudo systemctl restart kibana</span>
+    </div>
+  </div>
+</div>
