@@ -76,7 +76,7 @@ ARCH_SVG = """
   <text class="ns" x="617" y="124" text-anchor="middle">entropy · DGA · NXDOMAIN · beacon</text>
   <rect class="node" x="524" y="152" width="186" height="52" rx="8"/>
   <text class="nt" x="617" y="174" text-anchor="middle">UEBA anomaly</text>
-  <text class="ns" x="617" y="190" text-anchor="middle">IsolationForest + z-score</text>
+  <text class="ns" x="617" y="190" text-anchor="middle">OpenUBA (fallback: IsoForest+z)</text>
   <rect class="node" x="524" y="218" width="186" height="52" rx="8" style="stroke:var(--accent)"/>
   <text class="nt" x="617" y="240" text-anchor="middle">Correlation (glass-box)</text>
   <text class="ns" x="617" y="256" text-anchor="middle">weighted fusion + boosts</text>
@@ -246,7 +246,7 @@ HTML = f"""<main>
     <li><b>Sensors.</b> Zeek writes structured logs (DNS queries, TLS SNI + JA3, connections);
       Suricata runs the signature baseline.</li>
     <li><b>Features.</b> For each host, the eight indicators are computed as 0–1 sub-scores.</li>
-    <li><b>UEBA.</b> An IsolationForest + z-score model scores how anomalous the host is vs. benign.</li>
+    <li><b>UEBA.</b> <b>OpenUBA</b> (the integrated UEBA engine) scores how anomalous the host is vs. benign; a built-in IsolationForest + z-score is the drop-in fallback.</li>
     <li><b>Correlate &amp; explain.</b> Weighted fusion + boost rules produce a confidence; if it
       crosses the threshold, an explainable alert is built (verdict, contributing indicators, MITRE,
       recommended actions).</li>

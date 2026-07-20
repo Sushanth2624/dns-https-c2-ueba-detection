@@ -16,7 +16,8 @@ Kibana) is unchanged, so the contribution and evaluation are identical to the mu
 | Suricata | 8.0.5 | signature baseline (Config A) + TLS/JA3 |
 | Elasticsearch | 8.19 | single-node, security disabled (lab), bound to `localhost` |
 | Kibana | 8.19 | `localhost:5601` |
-| scikit-learn | ≥1.4 | IsolationForest + z-score UEBA fallback |
+| OpenUBA | v0.0.2 (GACWR) | primary UEBA engine — host backend + Postgres + model-runner (no k8s/Spark) |
+| scikit-learn | ≥1.4 | IsolationForest + z-score UEBA fallback (`ueba.source: baseline`) |
 
 ## Install (reproduce)
 
