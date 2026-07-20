@@ -142,7 +142,13 @@ root on the machine.</p>
 <tr><td class="m">ep-beacon-fast / slow</td><td class="m">10.50.0.25 / .26</td><td>beacon</td><td>regular TLS call-home to the local C2</td></tr>
 <tr><td class="m">ep-doh-cf / quad9</td><td class="m">10.50.0.27 / .28</td><td>doh</td><td>DNS-over-HTTPS to public resolvers</td></tr>
 </tbody></table></div>
-""" + check("<div class='m'># list all 14 hosts with their role\ndocker ps --format '{{.Names}}  {{.Label \"c2lab.role\"}}'\n\n# get a shell INSIDE a host (no password)\ndocker exec -it ep-dga-alpha sh\n#   then inside:  hostname -i   → 10.50.0.21 ;   exit\n\n# one-liner: a host's identity\ndocker exec ep-dga-alpha sh -c 'echo I am $(hostname) at $(hostname -i)'") + """
+""" + check("<div class='m'># list all 14 hosts with their role\ndocker ps --format '{{.Names}}  {{.Label \"c2lab.role\"}}'\n\n# get a shell INSIDE a host (no password)\ndocker exec -it ep-dga-alpha sh\n#   then inside:  hostname -i   → 10.50.0.21 ;   exit\n\n# one-liner: a host's identity\ndocker exec ep-dga-alpha sh -c 'echo I am $(hostname) at $(hostname -i)'") + note("warn",
+  "If docker ps shows nothing",
+  "The 14 hosts are <b>not</b> a permanently-running fleet — <span class='m'>make lab-up</span> creates "
+  "them, and they stay up until you explicitly remove them or the machine/Docker restarts (they have no "
+  "restart policy, so a reboot leaves them <span class='m'>Exited</span>, not gone). Seeing "
+  "<span class='m'>Exited</span> is normal, not a fault — just run <span class='m'>make lab-up</span> "
+  "again (it's idempotent) before a demo or before working through this doc's checks.") + """
 <h3>1.4 &nbsp;The software running on the machine</h3>
 <div class="scroll"><table><thead><tr><th>Software</th><th>Version</th><th>Role</th><th>Where / port</th></tr></thead><tbody>
 <tr><td>Zeek</td><td class="m">8.2.1</td><td>network sensor → logs</td><td class="m">/opt/zeek</td></tr>
@@ -359,7 +365,7 @@ P8 = part("p8", 8, "Verify EVERYTHING — a one-shot checklist",
   "cd /home/analysis/dns-https-c2-ueba-detection && source config/secrets.env\n\n"
   "# services up\nsystemctl is-active elasticsearch kibana docker\n"
   "/opt/zeek/bin/zeek --version ; suricata -V\n\n"
-  "# 14 hosts up\ndocker ps --format '{{.Names}} {{.Label \"c2lab.role\"}}' | sort\n\n"
+  "# 14 hosts up (if this list is empty, run: make lab-up)\ndocker ps --format '{{.Names}} {{.Label \"c2lab.role\"}}' | sort\n\n"
   "# get inside a host\ndocker exec ep-dga-alpha sh -c 'echo $(hostname) $(hostname -i)'\n\n"
   "# raw logs exist and are real\nwc -l data/captures/lab/*.log\nhead -1 data/captures/lab/dns.log | python3 -m json.tool\n\n"
   "# UEBA engine: OpenUBA integrated (backend up) with a selectable baseline fallback\nsystemctl is-active openuba-backend ; grep -A1 '^ueba:' config/config.openuba.yaml\n\n"

@@ -86,7 +86,7 @@ docker exec -it ep-dga-alpha sh
 #   then inside:  hostname -i   → 10.50.0.21 ;   exit
 
 # one-liner: a host's identity
-docker exec ep-dga-alpha sh -c 'echo I am $(hostname) at $(hostname -i)'</div>
+docker exec ep-dga-alpha sh -c 'echo I am $(hostname) at $(hostname -i)'</div><div class="note warn"><b>If docker ps shows nothing</b><br>The 14 hosts are <b>not</b> a permanently-running fleet — <span class='m'>make lab-up</span> creates them, and they stay up until you explicitly remove them or the machine/Docker restarts (they have no restart policy, so a reboot leaves them <span class='m'>Exited</span>, not gone). Seeing <span class='m'>Exited</span> is normal, not a fault — just run <span class='m'>make lab-up</span> again (it's idempotent) before a demo or before working through this doc's checks.</div>
 <h3>1.4 &nbsp;The software running on the machine</h3>
 <div class="scroll"><table><thead><tr><th>Software</th><th>Version</th><th>Role</th><th>Where / port</th></tr></thead><tbody>
 <tr><td>Zeek</td><td class="m">8.2.1</td><td>network sensor → logs</td><td class="m">/opt/zeek</td></tr>
@@ -336,7 +336,7 @@ curl -s -k -u elastic:$ELASTIC_PASSWORD "https://localhost:9200/c2-alerts/_searc
 systemctl is-active elasticsearch kibana docker
 /opt/zeek/bin/zeek --version ; suricata -V
 
-# 14 hosts up
+# 14 hosts up (if this list is empty, run: make lab-up)
 docker ps --format '{{.Names}} {{.Label "c2lab.role"}}' | sort
 
 # get inside a host
