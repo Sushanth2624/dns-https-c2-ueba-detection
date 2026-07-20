@@ -41,6 +41,11 @@ Set `PYTHONPATH=src` or `pip install -e .` so `c2detect` is importable.
 ## Layout
 See RESEARCH_AND_PLAN.md §10 for the annotated tree.
 
+## OpenUBA backend (UEBA engine) as a boot service
+The OpenUBA backend runs as a boot-persistent systemd service on the single VM (no Kubernetes/Spark).
+Install/enable it — and make its Postgres container restart on boot — with
+[`deploy/install-openuba-backend.sh`](deploy/); details in [`deploy/README.md`](deploy/README.md).
+
 ## Status — implemented & deployed end-to-end (single-host)
 
 All phases built and running on one Ubuntu 24.04 Analysis VM. See

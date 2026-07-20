@@ -1,0 +1,23 @@
+[Unit]
+Description=OpenUBA backend (host, docker execution mode)
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/home/analysis/openuba-src
+Environment=DATABASE_URL=postgresql://openuba:openuba@172.17.0.1:5432/openuba
+Environment=EXECUTION_MODE=docker
+Environment=MODEL_STORAGE_PATH=/home/analysis/openuba-src/core/model_library
+Environment=ENABLE_GRAPHQL=false
+Environment=PYTHONPATH=/home/analysis/openuba-src
+# On boot dockerd may be up before the Postgres container accepts connections; wait for it
+# (up to ~120s) so the backend starts against a reachable DB instead of crash-looping.
+ExecStartPre=/bin/bash -c 'for i in $(seq 1 60); do (exec 3<>/dev/tcp/172.17.0.1/5432) 2>/dev/null && exit 0; sleep 2; done; echo "postgres 172.17.0.1:5432 not reachable" >&2; exit 1'
+ExecStart=/home/analysis/openuba-src/.ouba-venv/bin/uvicorn core.fastapi_app:app --host 0.0.0.0 --port 8000
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
