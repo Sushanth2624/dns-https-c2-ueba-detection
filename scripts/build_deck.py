@@ -21,7 +21,7 @@ ARCH = """<svg viewBox="0 0 1000 340" class="dsvg"><defs><marker id="m1" markerW
 <rect class="nd" x="275" y="160" width="90" height="60" rx="8"/><text class="t" x="320" y="188" text-anchor="middle">Zeek</text><text class="s" x="320" y="206" text-anchor="middle">logs</text>
 <rect class="nd" x="375" y="160" width="90" height="60" rx="8"/><text class="t" x="420" y="188" text-anchor="middle">Suricata</text><text class="s" x="420" y="206" text-anchor="middle">signatures</text>
 <rect class="nd" x="535" y="72" width="190" height="52" rx="8"/><text class="t" x="630" y="103" text-anchor="middle">8 indicators</text>
-<rect class="nd" x="535" y="132" width="190" height="52" rx="8"/><text class="t" x="630" y="163" text-anchor="middle">UEBA anomaly</text>
+<rect class="nd" x="535" y="132" width="190" height="52" rx="8" style="stroke:var(--acc)"/><text class="t" x="630" y="157" text-anchor="middle">UEBA anomaly</text><text class="s" x="630" y="175" text-anchor="middle">OpenUBA engine</text>
 <rect class="nd" x="535" y="192" width="190" height="52" rx="8" style="stroke:var(--acc)"/><text class="t" x="630" y="223" text-anchor="middle">correlation</text>
 <rect class="nd" x="535" y="252" width="190" height="52" rx="8" style="stroke:var(--acc)"/><text class="t" x="630" y="283" text-anchor="middle">explainable alert</text>
 <rect class="nd" x="795" y="110" width="175" height="52" rx="8"/><text class="t" x="882" y="141" text-anchor="middle">Elasticsearch</text>
@@ -116,6 +116,18 @@ confidence = <span class="hl">ueba_weight · anomaly</span> + (1−w) · Σ wᵢ
 <li><b>Explainable:</b> we can say exactly <i>why</i> any host scored what it did</li>
 </ul>""")
 
+# 9b UEBA engine — OpenUBA integration
+s("", """<h2>The UEBA engine — OpenUBA, integrated</h2>
+<p class="big">The anomaly term in that formula isn't ours — it's <b>OpenUBA</b>, an open-source UEBA
+platform, running as the engine behind a fixed contract.</p>
+<div class="cols3">
+<div class="c"><div class="ci">📥</div><b>Features in</b><p>8 per-host behaviours → OpenUBA</p></div>
+<div class="c"><div class="ci">🧠</div><b>OpenUBA scores</b><p>trains on benign · isolation-forest risk per host</p></div>
+<div class="c"><div class="ci">🎚️</div><b>Calibrated out</b><p>risk → 0–1 anomaly vs the benign peer cohort</p></div>
+</div>
+<p class="pull">Runs on <span class="hl">one VM — no Kubernetes, no Spark</span>. Pluggable with a built-in
+fallback, and <b>A/B/C re-verified with OpenUBA in the loop</b> — same C &gt; B &gt; A.</p>""")
+
 # 10 alert
 s("", """<h2>Every verdict is explained</h2>
 <div class="alert">
@@ -139,7 +151,7 @@ s("", """<h2>The lab — real, separate hosts</h2>
 s("center", f"""<h2>The result — A vs B vs C</h2>
 <p class="big" style="margin-bottom:10px">Same real traffic, scored three ways. F1 = overall accuracy.</p>
 {RESULTS}
-<p class="pull">C caught <b>all four techniques</b> with <span class="hl">zero false positives</span> — beating signatures and any single behaviour. <b>C &gt; B &gt; A.</b></p>""")
+<p class="pull">C caught <b>all four techniques</b> with <span class="hl">zero false positives</span> — beating signatures and any single behaviour. <b>C &gt; B &gt; A</b>, with <span class="hl">OpenUBA driving the anomaly scores.</span></p>""")
 
 # 13 dashboard exec
 s("shot", f"""<h2>Executive dashboard</h2><img src="{img('exec')}" alt="executive dashboard"/>""")
@@ -150,7 +162,7 @@ s("shot", f"""<h2>Threat detail — which behaviour fired per host</h2><img src=
 s("", """<h2>Contribution &amp; novelty</h2>
 <ul class="checks">
 <li>Fuses <b>multiple</b> behavioural indicators — not one in isolation</li>
-<li>Adds a <b>UEBA</b> baseline of normal per host</li>
+<li>Integrates <b>OpenUBA</b> as the UEBA baseline of normal per host (fallback built-in)</li>
 <li>Produces <b>explainable</b>, MITRE-mapped, actionable alerts (glass-box)</li>
 <li>Benchmarks <b>head-to-head vs signatures</b> — and wins</li>
 </ul>
