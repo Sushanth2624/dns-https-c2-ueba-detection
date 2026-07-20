@@ -54,7 +54,7 @@ make health
 Or check each piece by hand:
 ```bash
 systemctl is-active elasticsearch kibana docker      # all should say 'active'
-docker ps --format '{{.Names}}  {{.Label "c2lab.role"}}  {{.Status}}'   # 14 hosts, all 'Up'
+docker ps --filter "label=c2lab.role" --format '{{.Names}}  {{.Label "c2lab.role"}}  {{.Status}}'   # 14 hosts, all 'Up'
 curl -s -k -u elastic:$ELASTIC_PASSWORD https://localhost:9200/_cluster/health?pretty | grep status
 curl -s -k -o /dev/null -w 'kibana http=%{http_code}\n' https://localhost:5601/api/status
 ```
@@ -65,7 +65,7 @@ curl -s -k -o /dev/null -w 'kibana http=%{http_code}\n' https://localhost:5601/a
 
 ```bash
 # list the 14 endpoint hosts (containers)
-docker ps --format '{{.Names}}\t{{.Label "c2lab.role"}}'
+docker ps --filter "label=c2lab.role" --format '{{.Names}}\t{{.Label "c2lab.role"}}'
 
 # get a shell INSIDE a host (no password — docker exec)
 docker exec -it ep-dga-alpha sh
@@ -226,7 +226,7 @@ the time picker (top-right) to **Last 24 hours**. Leave a terminal open too.
 > "Everything runs on one analysis machine. On it I created 14 endpoint hosts as containers — 6
 > normal and 8 running different attack techniques."
 ```bash
-docker ps --format '{{.Names}}   {{.Label "c2lab.role"}}' | sort
+docker ps --filter "label=c2lab.role" --format '{{.Names}}   {{.Label "c2lab.role"}}' | sort
 ```
 > "Each is a separate host with its own IP address, generating real traffic."
 
@@ -291,9 +291,11 @@ make evaluate-lab
   existing tools. My contribution is the **correlation + explainability engine** — turning many weak
   signals plus a UEBA score into one ranked, explained verdict — and the A/B/C evaluation proving it
   beats signatures."
-- **"Isn't the UEBA just an off-the-shelf model?"** → "Yes, an IsolationForest plus z-score —
-  deliberately, because the novelty is the correlation, the explainability, and the evaluation, not
-  the anomaly model."
+- **"Isn't the UEBA just an off-the-shelf model?"** → "The UEBA engine is OpenUBA — an open-source
+  platform I integrated end-to-end (backend, Postgres, model-runner, all running on this VM), driving
+  an IsolationForest under the hood. A built-in IsolationForest + z-score stays as a selectable
+  fallback so OpenUBA is never a single point of failure. Either way, my contribution isn't the
+  anomaly model itself — it's the correlation, the explainability, and the evaluation on top of it."
 - **"How do you handle false positives?"** → "Correlation requires several behaviours to agree, so a
   benign host doing one odd thing never crosses the threshold — that's why the false-positive rate is
   zero."

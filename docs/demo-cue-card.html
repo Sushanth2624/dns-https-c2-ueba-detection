@@ -54,7 +54,7 @@ h1{font-size:19pt;margin:0;letter-spacing:-.01em}
     <div class="scene">
       <div class="sh"><span class="sn">2</span><span class="st">The setup</span></div>
       <div class="say">One analysis machine, 14 endpoint hosts (containers): 6 normal, 8 attackers, each its own IP.</div>
-      <div class="do"><span class="tag">TYPE</span> <span class="mono">docker ps --format '{{.Names}}  {{.Label "c2lab.role"}}' | sort</span></div>
+      <div class="do"><span class="tag">TYPE</span> <span class="mono">docker ps --filter "label=c2lab.role" --format '{{.Names}}  {{.Label "c2lab.role"}}' | sort</span></div>
     </div>
 
     <div class="scene">

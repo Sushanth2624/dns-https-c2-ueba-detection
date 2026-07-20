@@ -78,8 +78,8 @@ root on the machine.</p>
 <tr><td class="m">ep-beacon-fast / slow</td><td class="m">10.50.0.25 / .26</td><td>beacon</td><td>regular TLS call-home to the local C2</td></tr>
 <tr><td class="m">ep-doh-cf / quad9</td><td class="m">10.50.0.27 / .28</td><td>doh</td><td>DNS-over-HTTPS to public resolvers</td></tr>
 </tbody></table></div>
-<div class="check"><span class="ct">✔ HOW TO CHECK</span><div class='m'># list all 14 hosts with their role
-docker ps --format '{{.Names}}  {{.Label "c2lab.role"}}'
+<div class="check"><span class="ct">✔ HOW TO CHECK</span><div class='m'># list all 14 hosts with their role (filtered to just the lab hosts)
+docker ps --filter "label=c2lab.role" --format '{{.Names}}  {{.Label "c2lab.role"}}'
 
 # get a shell INSIDE a host (no password)
 docker exec -it ep-dga-alpha sh
@@ -337,7 +337,7 @@ systemctl is-active elasticsearch kibana docker
 /opt/zeek/bin/zeek --version ; suricata -V
 
 # 14 hosts up (if this list is empty, run: make lab-up)
-docker ps --format '{{.Names}} {{.Label "c2lab.role"}}' | sort
+docker ps --filter "label=c2lab.role" --format '{{.Names}} {{.Label "c2lab.role"}}' | sort
 
 # get inside a host
 docker exec ep-dga-alpha sh -c 'echo $(hostname) $(hostname -i)'
