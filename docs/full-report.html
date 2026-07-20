@@ -390,7 +390,7 @@ engine scores it; results are stored and visualised.</p>
   <rect class="node" x="356" y="190" width="88" height="50" rx="8"/><text class="nt" x="400" y="212" text-anchor="middle">Suricata</text><text class="ns" x="400" y="228" text-anchor="middle">signatures</text>
   <rect class="node" x="258" y="300" width="186" height="38" rx="8" style="stroke:var(--red)"/><text class="nt" x="351" y="316" text-anchor="middle">local C2 (beacon target)</text><text class="ns" x="351" y="330" text-anchor="middle">TLS :8443</text>
   <rect class="node" x="524" y="86" width="186" height="48" rx="8"/><text class="nt" x="617" y="106" text-anchor="middle">8 behavioral indicators</text><text class="ns" x="617" y="122" text-anchor="middle">entropy·DGA·NXDOMAIN·beacon…</text>
-  <rect class="node" x="524" y="148" width="186" height="48" rx="8"/><text class="nt" x="617" y="168" text-anchor="middle">UEBA anomaly</text><text class="ns" x="617" y="184" text-anchor="middle">IsolationForest + z-score</text>
+  <rect class="node" x="524" y="148" width="186" height="48" rx="8"/><text class="nt" x="617" y="168" text-anchor="middle">UEBA anomaly</text><text class="ns" x="617" y="184" text-anchor="middle">OpenUBA (fallback: IsoForest+z)</text>
   <rect class="node" x="524" y="210" width="186" height="48" rx="8" style="stroke:var(--accent)"/><text class="nt" x="617" y="230" text-anchor="middle">Correlation (glass-box)</text><text class="ns" x="617" y="246" text-anchor="middle">weighted fusion + boosts</text>
   <rect class="node" x="524" y="272" width="186" height="48" rx="8" style="stroke:var(--accent)"/><text class="nt" x="617" y="292" text-anchor="middle">Explainable alert</text><text class="ns" x="617" y="308" text-anchor="middle">verdict · MITRE · actions</text>
   <rect class="node" x="790" y="120" width="176" height="50" rx="8"/><text class="nt" x="878" y="140" text-anchor="middle">Elasticsearch</text><text class="ns" x="878" y="156" text-anchor="middle">alerts·scores·telemetry</text>
@@ -412,8 +412,8 @@ engine scores it; results are stored and visualised.</p>
 (queries, response codes), <span class="mono">ssl.log</span> (SNI, JA3/JA4), <span class="mono">conn.log</span>
 (timing, byte counts). <b>Suricata</b> runs the signature baseline (Config A).</li>
 <li><b>Features.</b> For each host, the eight indicators are computed as normalised 0–1 sub-scores.</li>
-<li><b>UEBA.</b> An IsolationForest + z-score model scores how anomalous the host is versus a benign
-baseline.</li>
+<li><b>UEBA.</b> <b>OpenUBA</b> (the integrated UEBA engine) scores how anomalous the host is versus a
+benign baseline; a built-in IsolationForest + z-score is the drop-in fallback.</li>
 <li><b>Correlate &amp; explain.</b> A weighted fusion plus boost rules produces a confidence; if it
 crosses the threshold, an explainable alert is built.</li>
 <li><b>Store &amp; visualise.</b> Alerts, per-host scores, and raw telemetry go to Elasticsearch and
@@ -436,13 +436,18 @@ higher means more suspicious. Each maps to real attacker tradecraft and to MITRE
 </tbody></table></div>
 <div class="callout plain"><div class="co-t">A real engineering fix worth noting</div><div>The beacon indicator originally used the standard coefficient-of-variation of timing. When a beacon pauses and resumes (as real low-and-slow implants do), that big gap wrecked the measure. We switched to a <b>gap-robust</b> version based on the median and median-absolute-deviation, so a minority of large gaps no longer hides the periodicity. This is more faithful to real beacons, and it fixed detection of both our fast and slow beacons.</div></div>
 <h3>5.4 &nbsp;The UEBA layer — a sense of "normal"</h3>
-<p>UEBA (User &amp; Entity Behaviour Analytics) learns what normal looks like and flags deviations.
-Our model is an <b>IsolationForest</b> (an algorithm that isolates outliers) trained on the benign
-hosts, combined with a one-sided <b>z-score</b> that flags any single feature sitting far above the
-benign mean (for example, a near-perfect beacon whose regularity is ~1.0 when every benign host is
-~0). The final anomaly is the stronger of the two — conservative for benign hosts, responsive to a
-strong lone signal. This is deliberately the same class of model a commercial UEBA ships; the novelty
-is not the anomaly model but what happens next.</p>
+<p>UEBA (User &amp; Entity Behaviour Analytics) learns what normal looks like and flags deviations. The
+UEBA engine here is <b>OpenUBA</b> (an open-source UEBA platform), integrated and running on the single
+Analysis VM — no Kubernetes, no Spark: its backend, a Postgres store, and a model-runner container
+are all on the host. The parsed per-host feature vectors are pushed to OpenUBA, which trains on the
+benign hosts and returns a per-host <b>risk</b>; the adapter calibrates that risk into a 0–1 anomaly
+against the benign peer cohort. A built-in <b>IsolationForest + one-sided z-score</b> stays as a
+drop-in fallback behind the same interface (selectable with <span class="mono">ueba.source</span>), so
+OpenUBA can never become a single point of failure. Either way, the anomaly model is deliberately the
+same class a commercial UEBA ships — the novelty is not the anomaly model but what happens next.</p>
+<p>The A/B/C benchmark was re-run with OpenUBA driving the anomaly scores and the result is unchanged:
+<b>F1 C = 1.00 &gt; B = 0.67 &gt; A = 0.55</b>, with zero false positives. The ordering does not depend
+on which UEBA engine runs.</p>
 <h3>5.5 &nbsp;The correlation engine — the contribution</h3>
 <p>This is the heart of the project, and it is deliberately a <b>glass box</b> — every number is
 inspectable and reported, unlike a black-box classifier.</p>
@@ -634,7 +639,7 @@ bundle, and boost rules add confidence for high-signal combinations (e.g. beacon
 <h3>C. Project layout</h3>
 <pre>src/c2detect/
   indicators/   the 8 behaviours (entropy, dga, nxdomain, beaconing, ja3ja4, doh, session, length)
-  ueba/         IsolationForest + z-score anomaly model (and an OpenUBA adapter)
+  ueba/         OpenUBA integration adapter (openuba_client.py, active) + IsolationForest+z fallback (baseline_model.py)
   correlation/  the glass-box fusion engine + boost rules
   explain/      the explainable-alert builder
   parsers/      read Zeek and Suricata logs

@@ -177,10 +177,12 @@ def build():
 
     # STAGE 5
     b.append(stage(5, "UEBA — how abnormal is this host vs. normal?",
-        "An IsolationForest is trained on the <b>benign</b> hosts, plus a one-sided z-score. The host's "
-        "feature vector is scored against that baseline. Host .21 is wildly abnormal (nxdomain_rate 1.0 "
-        "when benign hosts are ~0), so:",
-        code("UEBA output for 10.50.0.21  (real)", "anomaly_score = 1.00   (0 = normal, 1 = extreme outlier)")))
+        "<b>OpenUBA</b> is the UEBA engine (running on this VM — no Kubernetes/Spark). The feature "
+        "vectors are pushed to OpenUBA, which trains on the <b>benign</b> hosts and returns a per-host "
+        "risk; the adapter calibrates it to a 0–1 anomaly against the benign cohort. (A built-in "
+        "IsolationForest + z-score is the drop-in fallback via <span class='m'>ueba.source</span>.) Host "
+        ".21 is wildly abnormal (nxdomain_rate 1.0 when benign hosts are ~0), so:",
+        code("UEBA output for 10.50.0.21  (real, via OpenUBA)", "anomaly_score = 1.00   (0 = normal, 1 = extreme outlier)")))
     b.append('<div class="arrow">↓ anomaly_score = 1.0</div>')
 
     # STAGE 6
@@ -294,7 +296,8 @@ def build():
         '<tr><td class="m">src/c2detect/parsers/</td><td>Read Zeek (TSV/JSON) and Suricata eve.json into dicts</td></tr>'
         '<tr><td class="m">src/c2detect/indicators/</td><td>The 8 behaviours: entropy, dga, nxdomain, beaconing, ja3ja4, doh, session, length</td></tr>'
         '<tr><td class="m">src/c2detect/pipeline.py</td><td>build_feature_vectors — group by host, run indicators</td></tr>'
-        '<tr><td class="m">src/c2detect/ueba/baseline_model.py</td><td>IsolationForest + z-score anomaly model</td></tr>'
+        '<tr><td class="m">src/c2detect/ueba/openuba_client.py</td><td>OpenUBA integration adapter (the UEBA engine) — active via ueba.source: openuba</td></tr>'
+        '<tr><td class="m">src/c2detect/ueba/baseline_model.py</td><td>IsolationForest + z-score anomaly model (drop-in fallback)</td></tr>'
         '<tr><td class="m">src/c2detect/correlation/</td><td>engine.py (fusion) + rules.py (weights, boosts)</td></tr>'
         '<tr><td class="m">src/c2detect/explain/reasoner.py</td><td>Build the explainable alert (verdict, MITRE, actions)</td></tr>'
         '<tr><td class="m">src/c2detect/output/elastic.py</td><td>AlertWriter — push alerts to Elasticsearch</td></tr>'
