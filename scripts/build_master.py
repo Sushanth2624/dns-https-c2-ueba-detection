@@ -35,7 +35,7 @@ ARCH = """<svg viewBox="0 0 1000 340" class="svg"><defs><marker id="m1" markerWi
 <rect class="nd" x="375" y="130" width="90" height="54" rx="8"/><text class="t" x="420" y="155" text-anchor="middle">Suricata</text><text class="s" x="420" y="172" text-anchor="middle">eve.json</text>
 <rect class="nd" x="275" y="240" width="190" height="42" rx="8" style="stroke:var(--red)"/><text class="t" x="370" y="266" text-anchor="middle">local C2 :8443</text>
 <rect class="nd" x="535" y="66" width="190" height="46" rx="8"/><text class="t" x="630" y="94" text-anchor="middle">8 indicators</text>
-<rect class="nd" x="535" y="120" width="190" height="46" rx="8"/><text class="t" x="630" y="148" text-anchor="middle">UEBA (IsolationForest+z)</text>
+<rect class="nd" x="535" y="120" width="190" height="46" rx="8" style="stroke:var(--acc)"/><text class="t" x="630" y="141" text-anchor="middle">UEBA anomaly</text><text class="s" x="630" y="158" text-anchor="middle">OpenUBA (fallback: IsoForest+z)</text>
 <rect class="nd" x="535" y="174" width="190" height="46" rx="8" style="stroke:var(--acc)"/><text class="t" x="630" y="202" text-anchor="middle">correlation (glass-box)</text>
 <rect class="nd" x="535" y="228" width="190" height="46" rx="8" style="stroke:var(--acc)"/><text class="t" x="630" y="256" text-anchor="middle">explainable alert</text>
 <rect class="nd" x="795" y="100" width="175" height="46" rx="8"/><text class="t" x="882" y="128" text-anchor="middle">Elasticsearch</text>
@@ -192,8 +192,9 @@ P3 = part("p3", 3, "Pin-to-pin: every stage, and how to check it yourself",
 <p><span class="m">pipeline.build_feature_vectors()</span> groups logs by host and runs the 8 indicators.</p>
 """ + check("<div class='m'>PYTHONPATH=src ./.venv/bin/python -c \"\nfrom c2detect.config import Config; from c2detect import pipeline\ncfg=Config(raw={'paths':{'zeek_log_dir':'data/captures/lab','ja3_baseline':'data/captures/lab/ja3_baseline.txt'},'thresholds':{'entropy_high':3.5,'nxdomain_ratio_high':0.2,'beacon_cv_low':0.10}})\nf=pipeline.build_feature_vectors(cfg)\nprint(f['10.50.0.21'])\"\n#  → {'dns_entropy':0.76,'dga':0.91,'nxdomain_rate':1.0, ...}</div>") + """
 <h3>Stage 5 — UEBA scores how abnormal the host is</h3>
-<p>The IsolationForest+z-score model (Part 5) scores the host vs the benign baseline → anomaly 1.0.
-Full detail, and the OpenUBA question, is in <a href="#p5">Part 5</a>.</p>
+<p><b>OpenUBA</b> (the integrated UEBA engine) scores the host vs the benign baseline; its risk is
+calibrated to an anomaly of ~1.0. A built-in IsolationForest+z-score is the drop-in fallback. Full
+detail — the integration, the adapter, and how to verify it — is in <a href="#p5">Part 5</a>.</p>
 <h3>Stage 6 — correlation fuses it into one confidence</h3>
 <p>The glass-box engine (Part 6) blends UEBA + indicators + boosts → confidence 0.898. Full math in
 <a href="#p6">Part 6</a>.</p>
@@ -228,43 +229,66 @@ P4 = part("p4", 4, "The 8 indicators in detail",
 P5 = part("p5", 5, "UEBA &amp; OpenUBA — the honest, complete picture",
   "Read this carefully — it's the question examiners most often ask.") + note("open",
   "The direct answer",
-  "<b>OpenUBA is NOT installed, NOT running, and NOT connected.</b> The system runs on the built-in "
-  "UEBA fallback — an <b>IsolationForest + z-score</b> model in <span class='m'>src/c2detect/ueba/baseline_model.py</span>. "
-  "This was a planned decision, not a gap.") + """
+  "<b>OpenUBA IS integrated, running, and connected — it is the UEBA engine.</b> Parsed feature "
+  "vectors go into OpenUBA, which returns per-entity anomaly/risk; the correlation engine consumes "
+  "those scores. A built-in <b>IsolationForest + z-score</b> in <span class='m'>baseline_model.py</span> "
+  "remains as a drop-in fallback, selectable with <span class='m'>ueba.source</span>. A/B/C was "
+  "re-verified with OpenUBA in the loop: <b>F1 C=1.00 &gt; B=0.67 &gt; A=0.55</b>, FPR 0.00.") + """
 <h3>5.1 &nbsp;What UEBA is, and why it's here</h3>
 <p>UEBA (User &amp; Entity Behaviour Analytics) means: learn what "normal" looks like for each entity
 (here, each host), then score how far a host deviates. In this project the UEBA layer takes each
 host's 8-number feature vector and returns an <b>anomaly score</b> (0 = normal, 1 = extreme outlier)
 plus a risk score and severity.</p>
-<h3>5.2 &nbsp;What we actually use — the built-in model</h3>
-<p>The active model is an <b>IsolationForest</b> (an algorithm that isolates outliers) trained on the
-6 benign hosts, combined with a <b>one-sided z-score</b> that flags any single feature sitting far
-above the benign average (e.g. a near-perfect beacon whose regularity is ~1.0 when every benign host
-is ~0). The final anomaly is the stronger of the two. It lives here:</p>
-""" + code("src/c2detect/ueba/baseline_model.py   →   class BaselineUEBA\n  .fit(X, feature_names)   # train on benign hosts; store mean & std\n  .score(entity, vec)      # -> UebaRecord(anomaly_score, risk_score, severity)", "file") + """
-<p>The config selects it:</p>
-""" + code("# config/config.lab.yaml\nueba:\n  source: baseline        # <-- 'baseline' = the built-in IsolationForest+z-score\n  baseline: {model_path: models/isoforest.joblib, contamination: 0.05}", "config") + """
-<h3>5.3 &nbsp;Where OpenUBA fits — and why we didn't deploy it</h3>
-<p>OpenUBA is an open-source UEBA framework. The original plan treated it as a <b>time-boxed spike
-with a go/no-go decision</b>, precisely because it is heavy (Kubernetes-native: Next.js + FastAPI +
-Spark + its own Elasticsearch) and flagged as possibly unmaintained. The plan always kept a
-<b>fallback behind a fixed contract</b> so OpenUBA could never become a single point of failure.</p>
-<p><b>Decision taken:</b> OpenUBA was deprioritised for stability on a single 16 GB machine; we use
-the fallback. This is fully defensible because the fallback <b>IS the same IsolationForest model
-OpenUBA ships as its own default</b> — so it is still legitimately "UEBA-based anomaly detection."</p>
-""" + note("key", "The contract that makes this safe",
-  "Both producers implement the same interface (<span class='m'>.score(entity, features) → UebaRecord</span>). "
-  "There is even an adapter, <span class='m'>src/c2detect/ueba/openuba_client.py</span>, that maps "
-  "OpenUBA's output onto that contract. It is <b>implemented but dormant</b> — flip "
-  "<span class='m'>ueba.source: openuba</span> in the config to use it, and nothing else in the "
-  "pipeline changes. So the system is OpenUBA-ready without depending on it.") + """
-<h3>5.4 &nbsp;How to prove all of this yourself</h3>
-""" + check("<div class='m'># 1. the config says 'baseline':\ngrep -A2 '^ueba:' config/config.lab.yaml\n\n# 2. no OpenUBA is installed or running:\ndocker ps -a | grep -i openuba        # (nothing)\npip list 2>/dev/null | grep -i openuba  # (nothing)\n\n# 3. the model files that DO exist:\nls -l models/                          # isoforest.joblib  (the trained fallback)\nls src/c2detect/ueba/                  # baseline_model.py (active) + openuba_client.py (adapter)</div>") + note("info",
-  "If asked \"why not OpenUBA?\"",
-  "\"OpenUBA is Kubernetes-native and heavy for a single lab VM, and its maintenance status is "
-  "uncertain, so per my plan I treated it as a go/no-go spike and used the IsolationForest fallback — "
-  "which is the same default model OpenUBA ships. My contribution is the correlation and "
-  "explainability layer, not the anomaly model, and the fallback keeps that independent of OpenUBA.\"") + "</section>"
+<h3>5.2 &nbsp;OpenUBA as the engine — running on one VM, no Kubernetes</h3>
+<p>OpenUBA (GACWR/OpenUBA v0.0.2) is an open-source UEBA platform. Its newest release is
+Kubernetes-native, but it is deployed here on the <b>single Analysis VM with no Kubernetes and no
+Spark</b>:</p>
+<ul>
+<li><b>Backend</b> — runs on the host as a systemd service <span class="m">openuba-backend</span>
+(uvicorn on <span class="m">:8000</span>, <span class="m">EXECUTION_MODE=docker</span>). On the host,
+not in a container, so the <span class="m">docker run</span> it issues for each job uses host paths.</li>
+<li><b>Postgres</b> — in Docker Compose (<span class="m">openuba-src-postgres-1</span>), OpenUBA's state store.</li>
+<li><b>Model-runner</b> — each job spawns a container (<span class="m">openuba-model-runner:sklearn</span>)
+that runs the IsolationForest and reports results back.</li>
+</ul>
+<p>The repo lives at <span class="m">/home/analysis/openuba-src</span>.</p>
+<h3>5.3 &nbsp;How our features flow into OpenUBA and scores come back</h3>
+<p>The adapter <span class="m">src/c2detect/ueba/openuba_client.py</span> (<span class="m">class OpenUBAClient</span>)
+drives OpenUBA and maps its output onto the UEBA contract. One batch call, <span class="m">prime()</span>:</p>
+""" + code("src/c2detect/ueba/openuba_client.py  →  class OpenUBAClient\n  .prime(features, benign_entities)   # 1 write per-host feature CSV into OpenUBA's runner volume\n                                      # 2 train the model on the BENIGN hosts (learn 'normal')\n                                      # 3 run inference on all hosts (model-runner container)\n                                      # 4 read per-host risk back, CALIBRATE -> 0..1 anomaly\n  .score(entity, vec)                 # -> UebaRecord(anomaly_score, risk_score, severity)", "file") + note("key",
+  "Why calibrate OpenUBA's risk?",
+  "OpenUBA's native <span class='m'>risk/100</span> compresses every host into ~0.16–0.51, so the "
+  "0.40 UEBA weight can't lift subtle beacon-only / DoH-only attackers over threshold. The adapter "
+  "normalises OpenUBA's risk against the <b>benign peer cohort</b> (one-sided z, 6σ saturation — the "
+  "same step the fallback uses). OpenUBA still produces the anomaly signal; the adapter only maps it "
+  "onto the contract's scale. Result: benign ≤ 0.28, attackers ≥ 0.80.") + """
+<p>The config selects OpenUBA:</p>
+""" + code("# config/config.openuba.yaml\nueba:\n  source: openuba         # <-- OpenUBA is the engine\n  openuba: {api_url: http://localhost:8000, username: openuba, password: password,\n            model_id: ffa8ddb1-a6b3-41af-8354-422609c37fb7, train_on_benign: true}\n# config/config.lab.yaml still has source: baseline (fast, no external deps) as the fallback profile", "config") + """
+<h3>5.4 &nbsp;The pluggable contract — and two SDK bugs we worked around</h3>
+""" + note("info", "The contract that keeps this safe",
+  "Both producers implement the same interface (<span class='m'>.score(entity, features) → UebaRecord</span>), "
+  "so the correlation/explainability/alerting code never knows which engine ran. Switch with "
+  "<span class='m'>ueba.source: openuba|baseline</span> — nothing else changes. OpenUBA is the engine; "
+  "the fallback means it can never become a single point of failure.") + """
+<p>Two real bugs in OpenUBA's Python SDK were handled inside the adapter (worth mentioning — it shows
+the integration is genuine):</p>
+<ul>
+<li>The SDK's <span class="m">wait_for_job()</span> treats only <span class="m">completed/failed/error</span>
+as terminal, but the backend reports success as <span class="m">succeeded</span> → <span class="m">wait=True</span>
+hangs forever. The adapter submits <span class="m">wait=False</span> and polls the job itself.</li>
+<li>A <i>trained</i> run persists anomalies to the store (not inline in the job), and the SDK's
+<span class="m">query_anomalies</span> hardcodes <span class="m">limit=5000</span> which the API rejects
+(422, cap 1000). The adapter reads <span class="m">/api/v1/anomalies</span> directly.</li>
+</ul>
+<h3>5.5 &nbsp;How to prove all of this yourself</h3>
+""" + check("<div class='m'># 1. OpenUBA backend is running and healthy:\nsystemctl status openuba-backend --no-pager | head -3\ncurl -s http://localhost:8000/health        # 200 OK\n\n# 2. its Postgres + a model-runner image exist:\ndocker ps --format '{{.Names}}' | grep -i openuba     # openuba-src-postgres-1\ndocker images | grep openuba-model-runner\n\n# 3. the SDK is installed and the config points at OpenUBA:\n.venv/bin/pip list | grep -i openuba\ngrep -A1 '^ueba:' config/config.openuba.yaml           # source: openuba\n\n# 4. run A/B/C with OpenUBA in the loop and watch C=1.00:\nPYTHONPATH=src ./.venv/bin/python -m c2detect.cli evaluate-lab \\\n  --config config/config.openuba.yaml --lab data/captures/lab --out data/eval/lab-openuba</div>") + note("info",
+  "If asked \"did you really integrate OpenUBA, or just use its model?\"",
+  "\"OpenUBA runs as the UEBA engine — the backend, its Postgres, and a model-runner container are up "
+  "on this VM; my adapter pushes the parsed features in, trains on benign, runs inference, and reads "
+  "per-host risk back, which I calibrate onto the 0–1 contract. I re-ran the A/B/C benchmark with "
+  "OpenUBA driving the anomaly scores and C&gt;B&gt;A still holds (F1 C=1.00). A built-in IsolationForest "
+  "stays as a selectable fallback so OpenUBA is never a single point of failure. My contribution is "
+  "the correlation and explainability layer on top.\"") + "</section>"
 
 P6 = part("p6", 6, "Correlation — exactly how the verdict is calculated",
   "This is the project's core contribution and it is a glass box: every number is inspectable. Worked with real values for host 10.50.0.21.") + """
@@ -308,10 +332,11 @@ P7 = part("p7", 7, "Where everything lives — the master map",
 <tr><td>A container's stdout</td><td class="m">docker logs ep-dga-alpha</td><td>docker</td></tr>
 </tbody></table></div>
 <h3>7.2 &nbsp;Code — the src/c2detect package</h3>
-""" + code("src/c2detect/\n  pipeline.py            group logs by host, run the 8 indicators (build_feature_vectors)\n  cli.py                 command entrypoints (run, evaluate-lab, corpus)\n  config.py              load YAML config\n  parsers/zeek.py        read Zeek logs (JSON/TSV)\n  parsers/suricata.py    read Suricata eve.json\n  indicators/            the 8 behaviours (entropy, dga, nxdomain, length, beaconing, ja3ja4, doh, session)\n  ueba/baseline_model.py IsolationForest + z-score  (ACTIVE)\n  ueba/openuba_client.py OpenUBA adapter            (dormant)\n  correlation/engine.py  the fusion formula\n  correlation/rules.py   weights + boost rules\n  explain/reasoner.py    build the explainable alert\n  output/elastic.py      push alerts to Elasticsearch (AlertWriter)\n  eval/                  A/B/C evaluation (lab.py, evaluate.py, metrics.py, report.py)", "tree") + """
+""" + code("src/c2detect/\n  pipeline.py            group logs by host, run the 8 indicators (build_feature_vectors)\n  cli.py                 command entrypoints (run, evaluate-lab, corpus)\n  config.py              load YAML config\n  parsers/zeek.py        read Zeek logs (JSON/TSV)\n  parsers/suricata.py    read Suricata eve.json\n  indicators/            the 8 behaviours (entropy, dga, nxdomain, length, beaconing, ja3ja4, doh, session)\n  ueba/openuba_client.py OpenUBA integration adapter (ACTIVE — ueba.source: openuba)\n  ueba/baseline_model.py IsolationForest + z-score   (fallback — ueba.source: baseline)\n  correlation/engine.py  the fusion formula\n  correlation/rules.py   weights + boost rules\n  explain/reasoner.py    build the explainable alert\n  output/elastic.py      push alerts to Elasticsearch (AlertWriter)\n  eval/                  A/B/C evaluation (lab.py, evaluate.py, metrics.py, report.py)", "tree") + """
 <h3>7.3 &nbsp;Data &amp; config on disk</h3>
 <div class="scroll"><table><tbody>
-<tr><td class="m">config/config.lab.yaml</td><td>weights, thresholds, UEBA source, MITRE map, ES settings</td></tr>
+<tr><td class="m">config/config.lab.yaml</td><td>weights, thresholds, UEBA source, MITRE map, ES settings (baseline profile)</td></tr>
+<tr><td class="m">config/config.openuba.yaml</td><td>same, but <span class="m">ueba.source: openuba</span> — runs on the OpenUBA engine</td></tr>
 <tr><td class="m">config/secrets.env</td><td>the elastic/kibana passwords (git-ignored)</td></tr>
 <tr><td class="m">scripts/lab_endpoints.txt</td><td>the 14 hosts (name, IP, role, command)</td></tr>
 <tr><td class="m">models/isoforest.joblib</td><td>the trained UEBA model</td></tr>
@@ -337,7 +362,7 @@ P8 = part("p8", 8, "Verify EVERYTHING — a one-shot checklist",
   "# 14 hosts up\ndocker ps --format '{{.Names}} {{.Label \"c2lab.role\"}}' | sort\n\n"
   "# get inside a host\ndocker exec ep-dga-alpha sh -c 'echo $(hostname) $(hostname -i)'\n\n"
   "# raw logs exist and are real\nwc -l data/captures/lab/*.log\nhead -1 data/captures/lab/dns.log | python3 -m json.tool\n\n"
-  "# UEBA is the baseline model (not OpenUBA)\ngrep -A1 '^ueba:' config/config.lab.yaml ; ls models/\n\n"
+  "# UEBA engine: OpenUBA integrated (backend up) with a selectable baseline fallback\nsystemctl is-active openuba-backend ; grep -A1 '^ueba:' config/config.openuba.yaml\n\n"
   "# data is in Elasticsearch\ncurl -s -k -u elastic:$ELASTIC_PASSWORD 'https://localhost:9200/_cat/indices/c2-*?v&h=index,docs.count'\n\n"
   "# the alerts, ranked\ncurl -s -k -u elastic:$ELASTIC_PASSWORD 'https://localhost:9200/c2-alerts/_search?sort=confidence:desc' \\\n"
   "  | python3 -c \"import sys,json;[print(h['_source']['entity'],h['_source']['confidence']) for h in json.load(sys.stdin)['hits']['hits']]\"\n\n"
@@ -361,7 +386,10 @@ from <span class="m">scripts/lab_endpoints.txt</span>):</p>
 <tr><td>B — best single</td><td>1.00</td><td>0.50</td><td>0.67</td><td>0.00</td></tr>
 <tr><td><b>C — multi + UEBA</b></td><td><b>1.00</b></td><td><b>1.00</b></td><td><b>1.00</b></td><td><b>0.00</b></td></tr>
 </tbody></table></div>
-""" + check("<div class='m'>make evaluate-lab        # prints the three F1 scores\ncat data/eval/lab/report.md   # the full table + per-host detail</div>") + "</section>"
+""" + note("key", "Verified with OpenUBA as the UEBA engine, too",
+  "The table above is the 14-host lab. Re-running it with OpenUBA driving the anomaly scores "
+  "(<span class='m'>config/config.openuba.yaml</span>) gives the <b>same ordering — F1 C=1.00 &gt; B=0.67 "
+  "&gt; A=0.55, FPR 0.00</b>. C&gt;B&gt;A does not depend on which UEBA engine runs.") + check("<div class='m'># baseline engine:\nmake evaluate-lab        # prints the three F1 scores\ncat data/eval/lab/report.md\n\n# OpenUBA engine (same result):\nPYTHONPATH=src ./.venv/bin/python -m c2detect.cli evaluate-lab \\\n  --config config/config.openuba.yaml --lab data/captures/lab --out data/eval/lab-openuba</div>") + "</section>"
 
 P10 = part("p10", 10, "Command reference",
   "Every make target and script, one line each.") + """
@@ -384,9 +412,11 @@ P11 = part("p11", 11, "FAQ — the doubts you (or examiners) will have",
 <p>One — the Analysis VM. The 14 endpoint hosts are Docker containers on it (no nested virtualization
 to run full VMs). Same real per-host traffic and inline capture.</p>
 <p class="q">Q. Where is UEBA? Is OpenUBA connected?</p>
-<p>UEBA is the IsolationForest + z-score model in <span class="m">baseline_model.py</span>. OpenUBA is
-<b>not</b> installed or connected — it was a planned go/no-go spike, deprioritised for stability; the
-fallback is the same default model OpenUBA ships. An adapter exists (dormant) to switch to it. (Part 5.)</p>
+<p><b>Yes — OpenUBA is the UEBA engine.</b> Its backend, Postgres and a model-runner container run on
+this VM (no Kubernetes/Spark); the adapter <span class="m">openuba_client.py</span> pushes the parsed
+features in, trains on benign, runs inference, and reads per-host risk back (calibrated to a 0–1
+anomaly). A built-in IsolationForest + z-score stays as a selectable fallback
+(<span class="m">ueba.source</span>). A/B/C was re-verified with OpenUBA: F1 C=1.00 &gt; B=0.67 &gt; A=0.55. (Part 5.)</p>
 <p class="q">Q. How does the correlation actually happen?</p>
 <p>A transparent weighted blend of the UEBA anomaly and the 8 indicator sub-scores, plus additive
 boosts for high-signal combinations, giving a 0–1 confidence. Fully worked in Part 6.</p>
