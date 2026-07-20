@@ -17,9 +17,10 @@ Kibana.
 endpoints ──(inline)──► Analysis VM ─► Zeek + Suricata ─► indicators ─► UEBA ─► correlation ─► explainable alerts ─► Elasticsearch ─► Kibana
 ```
 
-The UEBA layer is pluggable behind a fixed contract: **OpenUBA** or the built-in
-**IsolationForest fallback** (`src/c2detect/ueba/`), so OpenUBA can never become a single point of
-failure. See RESEARCH_AND_PLAN.md §6.
+The UEBA layer is pluggable behind a fixed contract: **OpenUBA** (the primary engine, now integrated
+and verified end-to-end) or the built-in **IsolationForest fallback** (`src/c2detect/ueba/`), so
+OpenUBA can never become a single point of failure. Switch with `ueba.source: openuba|baseline`. See
+RESEARCH_AND_PLAN.md §6.
 
 ## Quickstart (Analysis VM)
 
@@ -48,8 +49,11 @@ All phases built and running on one Ubuntu 24.04 Analysis VM. See
 
 - **Indicators (all implemented):** entropy, DGA, query-length, NXDOMAIN, beaconing (grouped by
   dest IP *and* SNI), JA3/JA4 rarity, DoH, session-shape — each a normalized 0–1 sub-score.
-- **UEBA:** IsolationForest **+ one-sided z-score** fallback (contract-compatible OpenUBA adapter
-  also implemented).
+- **UEBA:** **OpenUBA integrated as the primary engine** — parsed feature vectors are pushed to
+  OpenUBA (GACWR v0.0.2, single-VM: host backend + Postgres + model-runner containers), which runs
+  its IsolationForest and returns per-entity risk; the adapter calibrates that risk to the 0–1 UEBA
+  contract against the benign peer cohort. The built-in IsolationForest **+ one-sided z-score** stays
+  as a drop-in fallback (`ueba.source`). A/B/C re-verified with OpenUBA in the loop (below).
 - **Correlation + explainability:** glass-box weighted fusion + boost rules → explainable alerts
   (verdict, confidence, contributing indicators with reasons, MITRE, actions) → Elasticsearch.
 - **Sensors deployed:** Zeek 8.2.1 (+JA3/JA4), Suricata 8.0.5, Elasticsearch + Kibana 8.19.
@@ -62,7 +66,18 @@ All phases built and running on one Ubuntu 24.04 Analysis VM. See
   | **C — multi-indicator + UEBA (this project)** | **1.00** | **0.00** |
 
   Hypothesis supported: **C > B > A** on F1, with C the only config at zero false positives.
-- **Reproduce:** `make demo` (capture → evaluate → alerts to ES → Kibana dashboard).
+- **Evaluation (A/B/C) re-verified with OpenUBA as the UEBA engine, 14-host inline lab:**
+
+  | Config | F1 | FPR |
+  |---|---|---|
+  | A — signature-only (Suricata) | 0.55 | 0.00 |
+  | B — best single indicator (dga) | 0.67 | 0.00 |
+  | **C — multi-indicator + OpenUBA UEBA** | **1.00** | **0.00** |
+
+  **C > B > A holds with OpenUBA driving the anomaly scores — identical to the fallback.** Calibrated
+  separation is clean (benign ≤ 0.28, attackers ≥ 0.80). Results: [`data/eval/lab-openuba/`](data/eval/lab-openuba/).
+  Reproduce: `PYTHONPATH=src python -m c2detect.cli evaluate-lab --config config/config.openuba.yaml --lab data/captures/lab --out data/eval/lab-openuba`.
+- **Reproduce (fallback):** `make demo` (capture → evaluate → alerts to ES → Kibana dashboard).
 
 ## Ethics
 All attack simulation runs inside an isolated lab against the author's own hosts. No live C2, no

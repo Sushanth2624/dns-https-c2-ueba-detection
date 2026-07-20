@@ -143,10 +143,17 @@ Each indicator outputs both a **raw value** and a **normalized 0–1 sub-score**
 
 Two interchangeable producers implement this contract:
 
-- `ueba/openuba_client.py` — reads OpenUBA's outputs (its Elasticsearch index or export) and maps them onto the contract.
+- `ueba/openuba_client.py` — **the OpenUBA integration** (primary engine): pushes the per-entity
+  feature vectors to OpenUBA, trains on benign, runs inference via OpenUBA's model-runner, reads the
+  per-entity risk back, and calibrates it onto the contract (0–1 anomaly, one-sided z vs the benign
+  peer cohort). Not a passive ES reader — it drives OpenUBA's train/infer jobs.
 - `ueba/baseline_model.py` — a self-contained fallback: an sklearn **IsolationForest** (plus z-score) over the same feature vectors. This is exactly the model OpenUBA ships as its own default, so using it is *still* legitimately "UEBA-based anomaly detection" — defensible in the viva.
 
-**Decision rule:** if the OpenUBA spike (Sprint 0) doesn't produce the contract cleanly within its time-box, switch to `baseline_model.py` and keep OpenUBA as "evaluated, deprioritized for stability" in the report. Nothing downstream changes.
+**Decision rule (as executed):** the OpenUBA spike (Sprint 0) **passed** — OpenUBA is integrated and
+runs the UEBA layer on this single VM (host backend + Postgres + model-runner containers; no
+Kubernetes/Spark), and A/B/C was re-verified with it in the loop (F1 C=1.00 > B=0.67 > A=0.55). The
+`baseline_model.py` path remains as a drop-in fallback, selectable via `ueba.source`; nothing
+downstream changes either way. Integration details and the SDK workarounds are in `docs/viva-prep.md`.
 
 ---
 

@@ -109,8 +109,24 @@ def evaluate_lab(lab_dir: str | Path, base_cfg: Config, model_path: str | None =
     features = {e: v for e, v in features.items() if e in truth}
     truth_labels = {e: g["label"] for e, g in truth.items()}
 
-    ueba = _train_ueba(features, truth, weight_keys, contamination, model_path)
-    ueba_scores = {e: ueba.score(e, fv).anomaly_score for e, fv in features.items()}
+    # UEBA anomaly per entity — from OpenUBA (the configured engine) or the IsolationForest fallback.
+    ueba_source = base_cfg.get("ueba", "source", default="baseline")
+    if ueba_source == "openuba":
+        from ..ueba.openuba_client import OpenUBAClient
+        ou = base_cfg.get("ueba", "openuba", default={}) or {}
+        client = OpenUBAClient(
+            api_url=ou.get("api_url", "http://localhost:8000"),
+            username=ou.get("username", "openuba"), password=ou.get("password", "password"),
+            model_id=ou.get("model_id"),
+            saved_models_dir=ou.get("saved_models_dir",
+                                    "/home/analysis/openuba-src/core/storage/saved_models"),
+            runner_dir=ou.get("runner_dir", "/opt/openuba/saved_models"),
+            train_on_benign=bool(ou.get("train_on_benign", False)))
+        client.prime(features, benign_entities=benign, feature_keys=weight_keys)
+        ueba_scores = {e: client.score(e, fv).anomaly_score for e, fv in features.items()}
+    else:
+        ueba = _train_ueba(features, truth, weight_keys, contamination, model_path)
+        ueba_scores = {e: ueba.score(e, fv).anomaly_score for e, fv in features.items()}
 
     # Config C
     c_pred, c_conf = {}, {}

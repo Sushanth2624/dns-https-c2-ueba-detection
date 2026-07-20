@@ -172,8 +172,17 @@ def get_ueba(cfg: Config):
     source = cfg.get("ueba", "source", default="baseline")
     if source == "openuba":
         from .ueba.openuba_client import OpenUBAClient
+        ou = cfg.get("ueba", "openuba", default={}) or {}
         return OpenUBAClient(
-            es_index=cfg.get("ueba", "openuba", "es_index"),
+            api_url=ou.get("api_url", "http://localhost:8000"),
+            username=ou.get("username", "openuba"),
+            password=ou.get("password", "password"),
+            model_id=ou.get("model_id"),
+            saved_models_dir=ou.get("saved_models_dir",
+                                    "/home/analysis/openuba-src/core/storage/saved_models"),
+            runner_dir=ou.get("runner_dir", "/opt/openuba/saved_models"),
+            train_on_benign=bool(ou.get("train_on_benign", False)),
+            es_index=ou.get("es_index", "openuba-anomalies"),
             hosts=cfg.get("elasticsearch", "hosts"),
         )
     model_path = cfg.get("ueba", "baseline", "model_path", default="models/isoforest.joblib")
@@ -207,6 +216,9 @@ def run(cfg: Config) -> list[dict]:
 
     features = build_feature_vectors(cfg)     # {entity: {indicator: subscore}}
     ueba = get_ueba(cfg)
+    # OpenUBA (and any batch producer) gets primed with all feature vectors before per-entity scoring.
+    if hasattr(ueba, "prime"):
+        ueba.prime(features, feature_keys=list(weights.keys()))
 
     alerts: list[dict] = []
     for entity, subscores in features.items():

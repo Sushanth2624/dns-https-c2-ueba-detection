@@ -1,0 +1,34 @@
+# Container-lab inline capture: real multi-host telemetry (distinct source IPs, no relabeling).
+paths:
+  zeek_log_dir: data/captures/lab
+  suricata_eve: data/captures/lab/eve.json
+  ja3_baseline: data/captures/lab/ja3_baseline.txt
+weights: {dns_entropy: 0.15, dga: 0.10, nxdomain_rate: 0.15, beacon_cv: 0.25, ja3_rarity: 0.10, doh_endpoint: 0.10, session_shape: 0.10, query_len: 0.05}
+ueba_weight: 0.40
+thresholds: {entropy_high: 3.5, nxdomain_ratio_high: 0.2, beacon_cv_low: 0.10, alert_confidence_min: 0.6}
+ueba:
+  source: openuba
+  openuba:
+    api_url: http://localhost:8000
+    username: openuba
+    password: password
+    model_id: ffa8ddb1-a6b3-41af-8354-422609c37fb7   # OpenUBA built-in sklearn IsolationForest
+    saved_models_dir: /home/analysis/openuba-src/core/storage/saved_models
+    runner_dir: /opt/openuba/saved_models
+    train_on_benign: true
+    es_index: openuba-anomalies
+  baseline: {model_path: models/isoforest.joblib, contamination: 0.05}
+mitre_map:
+  dns_entropy: ["T1568.002","T1071.004"]
+  dga: ["T1568.002"]
+  query_len: ["T1071.004","T1048.003"]
+  nxdomain_rate: ["T1568.002"]
+  beacon_cv: ["T1071.001","T1571"]
+  ja3_rarity: ["T1573","T1071.001"]
+  doh_endpoint: ["T1071.004","T1572"]
+  session_shape: ["T1071.001","T1573"]
+elasticsearch:
+  hosts: ["https://localhost:9200"]
+  alert_index: c2-alerts
+  user: elastic            # password read from ELASTIC_PASSWORD env (see config/secrets.env)
+  verify_certs: false      # self-signed lab CA; set a ca path to verify
