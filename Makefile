@@ -34,7 +34,7 @@ lab-demo: lab-up lab-capture evaluate-lab
 	@echo "Kibana: https://localhost:5601/app/dashboards -> 'C2 — Telemetry & Scores'"
 lab-down:
 	-docker rm -f $$(docker ps -aq --filter "label=c2lab.role") 2>/dev/null
-	-pkill -f 's_server.*8443'; pkill -f 'dnsmasq.*10.50.0.1'
+	-pkill -f 's_server.*8443'; sudo pkill -f 'dnsmasq.*10.50.0.1'
 
 # Single-host demo (no Docker): capture on host NIC -> evaluate -> ES -> dashboards
 demo: dataset evaluate
